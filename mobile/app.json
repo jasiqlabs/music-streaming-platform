@@ -1,0 +1,15 @@
+{
+  "expo": {
+    "name": "FanApp",
+    "slug": "fan-app",
+    "version": "1.0.0",
+
+    "splash": {
+      "image": "./apps/fan/src/logo.jpg",
+      "resizeMode": "contain",
+      "backgroundColor": "#000000"
+    },
+
+    "assetBundlePatterns": ["**/*"]
+  }
+}

@@ -1,0 +1,5 @@
+2026-02-12 11:21:25.321 IST [2129] LOG:  starting PostgreSQL 15.15 (Homebrew) on aarch64-apple-darwin25.2.0, compiled by Apple clang version 17.0.0 (clang-1700.6.3.2), 64-bit
+2026-02-12 11:21:25.326 IST [2129] LOG:  listening on IPv6 address "::1", port 5432
+2026-02-12 11:21:25.326 IST [2129] LOG:  listening on IPv4 address "127.0.0.1", port 5432
+2026-02-12 11:21:25.326 IST [2129] FATAL:  could not open lock file "/tmp/.s.PGSQL.5432.lock": Permission denied
+2026-02-12 11:21:25.326 IST [2129] LOG:  database system is shut down
