@@ -20,7 +20,7 @@ export default function SplashScreen({ navigation }: Props) {
         const token = await AsyncStorage.getItem(JWT_STORAGE_KEY);
         navigation.reset({
           index: 0,
-          routes: [{ name: token ? 'Home' : 'Login' }],
+          routes: [{ name: token ? 'MainTabs' : 'Login' }],
         });
       } catch {
         navigation.reset({

@@ -2,10 +2,9 @@ import { NavigationContainer } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import React from 'react';
 
-import HomeScreen from '../screens/HomeScreen';
 import LoginScreen from '../screens/LoginScreen';
-import SeeAllSongsScreen from '../screens/SeeAllSongsScreen';
 import SplashScreen from '../screens/SplashScreen';
+import MainTabsNavigator from './MainTabsNavigator';
 
 import type { RootStackParamList } from './types';
 
@@ -20,12 +19,17 @@ export default function AppNavigator() {
           component={SplashScreen}
           options={{ headerShown: false }}
         />
-        <Stack.Screen name="Login" component={LoginScreen} options={{ title: 'Login' }} />
-        <Stack.Screen name="Home" component={HomeScreen} options={{ title: 'Home' }} />
+
         <Stack.Screen
-          name="SeeAllSongs"
-          component={SeeAllSongsScreen}
-          options={{ title: 'See All' }}
+          name="Login"
+          component={LoginScreen}
+          options={{ title: 'Login' }}
+        />
+
+        <Stack.Screen
+          name="MainTabs"
+          component={MainTabsNavigator}
+          options={{ headerShown: false }}
         />
       </Stack.Navigator>
     </NavigationContainer>

@@ -1,18 +1,26 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import React, { createContext, useCallback, useContext, useMemo, useState } from 'react';
+import React, { createContext, useCallback, useContext, useMemo, useState, useEffect } from 'react';
 
 import { api, JWT_STORAGE_KEY } from '../services/api';
 
 export type SessionUser = {
+  id?: string | number;
   email?: string;
   name?: string;
+  status?: AccountStatus;
 } & Record<string, unknown>;
+
+export type AccountStatus = 'ACTIVE' | 'SUSPENDED';
+
+const SESSION_USER_STORAGE_KEY = 'sessionUser';
 
 type AuthContextValue = {
   token: string | null;
   user: SessionUser | null;
   isRestoring: boolean;
   isLoggingIn: boolean;
+  userAccountStatus: AccountStatus;
+  isAccountSuspended: boolean;
   restoreToken: () => Promise<string | null>;
   setToken: (token: string | null) => Promise<void>;
   login: (email: string, password: string) => Promise<void>;
@@ -37,11 +45,31 @@ function extractUser(data: unknown): SessionUser | null {
   return typeof candidate === 'object' && candidate ? (candidate as SessionUser) : null;
 }
 
+function extractAccountStatus(data: unknown): AccountStatus | null {
+  if (!data || typeof data !== 'object') return null;
+  const record = data as Record<string, unknown>;
+  const user = extractUser(record);
+
+  const candidate =
+    (user as any)?.status ??
+    (user as any)?.account_status ??
+    record.status ??
+    record.account_status;
+
+  if (candidate === 'ACTIVE' || candidate === 'SUSPENDED') return candidate;
+  return null;
+}
+
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [token, setTokenState] = useState<string | null>(null);
   const [user, setUser] = useState<SessionUser | null>(null);
   const [isRestoring, setIsRestoring] = useState(false);
   const [isLoggingIn, setIsLoggingIn] = useState(false);
+  
+  // Global account status with persistence
+  const [userAccountStatus, setUserAccountStatusState] = useState<AccountStatus>('ACTIVE');
+  
+  const isAccountSuspended = userAccountStatus === 'SUSPENDED';
 
   const restoreToken = useCallback(async () => {
     setIsRestoring(true);
@@ -67,13 +95,61 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     try {
       const res = await api.get('/auth/session');
       const nextUser = extractUser(res.data);
-      setUser(nextUser);
-      return nextUser;
+
+      const status = extractAccountStatus(res.data);
+      const mergedUser = nextUser
+        ? ({ ...nextUser, status: status ?? (nextUser as any)?.status } as SessionUser)
+        : null;
+
+      setUser(mergedUser);
+      if (mergedUser) {
+        await AsyncStorage.setItem(SESSION_USER_STORAGE_KEY, JSON.stringify(mergedUser));
+      } else {
+        await AsyncStorage.removeItem(SESSION_USER_STORAGE_KEY);
+      }
+
+      setUserAccountStatusState(status ?? 'ACTIVE');
+      return mergedUser;
     } catch {
+      setTokenState(null);
       setUser(null);
+      setUserAccountStatusState('ACTIVE');
+      await AsyncStorage.removeItem(JWT_STORAGE_KEY);
+      await AsyncStorage.removeItem(SESSION_USER_STORAGE_KEY);
       return null;
     }
   }, []);
+
+  useEffect(() => {
+    const restore = async () => {
+      setIsRestoring(true);
+      try {
+        const stored = await AsyncStorage.getItem(JWT_STORAGE_KEY);
+        const storedUserRaw = await AsyncStorage.getItem(SESSION_USER_STORAGE_KEY);
+        const storedUser = storedUserRaw ? (JSON.parse(storedUserRaw) as SessionUser) : null;
+
+        setTokenState(stored);
+        setUser(storedUser);
+        if (storedUser?.status === 'ACTIVE' || storedUser?.status === 'SUSPENDED') {
+          setUserAccountStatusState(storedUser.status);
+        } else {
+          setUserAccountStatusState('ACTIVE');
+        }
+
+        if (stored) {
+          await fetchSession();
+        }
+      } catch {
+        setTokenState(null);
+        setUser(null);
+        setUserAccountStatusState('ACTIVE');
+      } finally {
+        setIsRestoring(false);
+      }
+    };
+
+    restore();
+  }, [fetchSession]);
 
   const login = useCallback(
     async (email: string, password: string) => {
@@ -84,7 +160,28 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         if (!nextToken) {
           throw new Error('Login succeeded but token was not returned by server.');
         }
+
+        const nextUser = extractUser(res.data);
+        const status = extractAccountStatus(res.data);
+        const mergedUser = nextUser
+          ? ({ ...nextUser, status: status ?? (nextUser as any)?.status } as SessionUser)
+          : null;
+
         await setToken(nextToken);
+
+        setUser(mergedUser);
+        if (mergedUser) {
+          await AsyncStorage.setItem(SESSION_USER_STORAGE_KEY, JSON.stringify(mergedUser));
+        } else {
+          await AsyncStorage.removeItem(SESSION_USER_STORAGE_KEY);
+        }
+
+        if (status) {
+          setUserAccountStatusState(status);
+        } else {
+          setUserAccountStatusState('ACTIVE');
+        }
+
         await fetchSession();
       } finally {
         setIsLoggingIn(false);
@@ -96,6 +193,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const logout = useCallback(async () => {
     await setToken(null);
     setUser(null);
+    setUserAccountStatusState('ACTIVE');
+    await AsyncStorage.removeItem(SESSION_USER_STORAGE_KEY);
   }, [setToken]);
 
   const value = useMemo<AuthContextValue>(
@@ -104,6 +203,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       user,
       isRestoring,
       isLoggingIn,
+      userAccountStatus,
+      isAccountSuspended,
       restoreToken,
       setToken,
       login,
@@ -115,6 +216,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       user,
       isRestoring,
       isLoggingIn,
+      userAccountStatus,
+      isAccountSuspended,
       restoreToken,
       setToken,
       login,

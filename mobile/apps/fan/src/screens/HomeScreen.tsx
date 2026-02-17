@@ -4,196 +4,576 @@ import {
   FlatList,
   Image,
   Pressable,
-  SafeAreaView,
   ScrollView,
   StyleSheet,
   Text,
+  TouchableOpacity,
   View,
   Dimensions,
 } from 'react-native';
+
 import { LinearGradient } from 'expo-linear-gradient';
-import { Search, Home as HomeIcon, Library, User, Play, Pause, FastForward } from 'lucide-react-native';
-import { apiV1 } from '../services/api'; // Axios instance assume kar raha hoon
+import { SafeAreaView } from 'react-native-safe-area-context';
+import { useBottomTabBarHeight } from '@react-navigation/bottom-tabs';
+import { BadgeCheck, Lock, Pause, Play, Search, SkipForward } from 'lucide-react-native';
 
 const { width } = Dimensions.get('window');
 
+type ArtistCard = {
+  id: string;
+  name: string;
+  subText: string;
+  image: string;
+  isVerified?: boolean;
+  isSubscriptionBased?: boolean;
+};
+
+type ContentCard = {
+  id: string;
+  title: string;
+  artist: string;
+  description: string;
+  thumbnail: string;
+  isLocked: boolean;
+};
+
 export default function HomeScreen({ navigation }: any) {
+  const tabBarHeight = useBottomTabBarHeight();
+
   const [loading, setLoading] = useState(true);
-  const [content, setContent] = useState([]);
-  const [trendingArtists, setTrendingArtists] = useState([]);
-  const [activeTab, setActiveTab] = useState('Home');
-  const [currentSong, setCurrentSong] = useState(null);
+  const [featuredArtists, setFeaturedArtists] = useState<ArtistCard[]>([]);
+  const [trendingArtists, setTrendingArtists] = useState<ArtistCard[]>([]);
+  const [recentlyAdded, setRecentlyAdded] = useState<ContentCard[]>([]);
+
+  const [currentSong, setCurrentSong] = useState<ContentCard | null>(null);
   const [isPlaying, setIsPlaying] = useState(false);
 
   useEffect(() => {
-    fetchData();
+    let mounted = true;
+    (async () => {
+      try {
+        setLoading(true);
+
+        const mockFeatured: ArtistCard[] = [
+          {
+            id: 'luna-ray',
+            name: 'Luna Ray',
+            subText: 'Subscription Based',
+            image:
+              'https://images.unsplash.com/photo-1524504388940-b1c1722653e1?auto=format&fit=crop&w=1000&q=80',
+            isVerified: true,
+            isSubscriptionBased: true,
+          },
+          {
+            id: 'david-stone',
+            name: 'David Stone',
+            subText: 'Bogaert',
+            image:
+              'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?auto=format&fit=crop&w=1000&q=80',
+          },
+          {
+            id: 'violet-deen',
+            name: 'Violet Deen',
+            subText: 'Bogaert',
+            image:
+              'https://images.unsplash.com/photo-1524250502761-1ac6f2e30d43?auto=format&fit=crop&w=1000&q=80',
+          },
+        ];
+
+        const mockTrending: ArtistCard[] = [
+          {
+            id: 'kari-lucas',
+            name: 'Kari Lucas',
+            subText: 'Dusian',
+            image:
+              'https://images.unsplash.com/photo-1524502397800-2eeaad7c3fe5?auto=format&fit=crop&w=800&q=80',
+          },
+          {
+            id: 'derek-maas',
+            name: 'Derek Maas',
+            subText: 'Dusian',
+            image:
+              'https://images.unsplash.com/photo-1544723795-3fb6469f5b39?auto=format&fit=crop&w=800&q=80',
+          },
+          {
+            id: 'luna-ray-trending',
+            name: 'Luna Ray',
+            subText: 'Dusian',
+            image:
+              'https://images.unsplash.com/photo-1524503033411-f6e95c1c530f?auto=format&fit=crop&w=800&q=80',
+            isVerified: true,
+          },
+          {
+            id: 'violet-deen-trending',
+            name: 'Violet Deen',
+            subText: 'Bogaert',
+            image:
+              'https://images.unsplash.com/photo-1544005313-94ddf0286df2?auto=format&fit=crop&w=800&q=80',
+          },
+        ];
+
+        const mockRecently: ContentCard[] = [
+          {
+            id: 'secret-melody',
+            title: 'Secret Melody',
+            artist: 'Luna Ray',
+            description:
+              'Experience a serene and mystical journey with\n the soothing melodies of Luna Ray.',
+            thumbnail:
+              'https://images.unsplash.com/photo-1464863979621-258859e62245?auto=format&fit=crop&w=1400&q=80',
+            isLocked: true,
+          },
+          {
+            id: 'midnight-dreams',
+            title: 'Midnight Dreams',
+            artist: 'Luna Ray',
+            description: 'A premium late-night vibe with warm synths.',
+            thumbnail:
+              'https://images.unsplash.com/photo-1470225620780-dba8ba36b745?auto=format&fit=crop&w=1200&q=80',
+            isLocked: false,
+          },
+          {
+            id: 'golden-skies',
+            title: 'Golden Skies',
+            artist: 'David Stone',
+            description: 'Cinematic build-ups and bright textures.',
+            thumbnail:
+              'https://images.unsplash.com/photo-1511379938547-c1f69419868d?auto=format&fit=crop&w=1200&q=80',
+            isLocked: false,
+          },
+        ];
+
+        if (!mounted) return;
+        setFeaturedArtists(mockFeatured);
+        setTrendingArtists(mockTrending);
+        setRecentlyAdded(mockRecently);
+        setCurrentSong(mockRecently[0]);
+      } finally {
+        if (mounted) setLoading(false);
+      }
+    })();
+
+    return () => {
+      mounted = false;
+    };
   }, []);
 
-  const fetchData = async () => {
-    try {
-      setLoading(true);
-      // Backend calls using axios (apiV1)
-      const [contentRes, artistsRes] = await Promise.all([
-        apiV1.get('v1/content'),
-        apiV1.get('v1/artists')
-      ]);
+  const miniProgress = useMemo(() => 0.4, []);
 
-      setContent(contentRes.data?.items || []);
-      setTrendingArtists(artistsRes.data?.artists || []);
-      
-      if (contentRes.data?.items?.length > 0) {
-        setCurrentSong(contentRes.data.items[0]);
-      }
-    } catch (error) {
-      console.error("API Error:", error);
-    } finally {
-      setLoading(false);
+  const onPressArtist = (artistId: string) => {
+    navigation.navigate('Artist', { artistId });
+  };
+
+  const onPressContent = (item: ContentCard) => {
+    if (item.isLocked) {
+      navigation.navigate('ArtistSubscription', {
+        song: {
+          id: item.id,
+          title: item.title,
+          artist: item.artist,
+          duration: '3:12',
+          thumbnail: item.thumbnail,
+          locked: true,
+        },
+        coverImage: item.thumbnail,
+      });
+      return;
     }
+
+    navigation.navigate('ContentPlayer', { contentId: item.id });
   };
 
-  const onSeeAll = () => {
-    // Navigation with 'latest' filter for artists/logs
-    navigation.navigate('SeeAllSongs', { filter: 'latest' });
+  const onPressSeeAllTrending = () => {
+    navigation.navigate('SeeAllTrending', {
+      artists: trendingArtists,
+    });
   };
 
-  const renderFeaturedCard = ({ item }) => (
-    <Pressable style={styles.featuredCard} onPress={() => setCurrentSong(item)}>
-      <Image source={{ uri: item.artwork || 'https://via.placeholder.com/300' }} style={styles.featuredImg} />
-      <LinearGradient colors={['transparent', 'rgba(0,0,0,0.8)']} style={styles.featuredOverlay}>
-        <Text style={styles.featuredArtistName}>{item.artistName || 'Luna Ray'}</Text>
-        {item.locked && (
-          <View style={styles.lockedBadge}>
-            <Text style={styles.lockedText}>LOCKED EARLY ACCESS</Text>
+  const renderFeaturedArtist = ({ item }: { item: ArtistCard }) => (
+    <Pressable style={styles.featuredCard} onPress={() => onPressArtist(item.id)}>
+      <Image source={{ uri: item.image }} style={styles.featuredImg} />
+      <LinearGradient
+        colors={['rgba(0,0,0,0.0)', 'rgba(0,0,0,0.85)']}
+        style={styles.featuredOverlay}
+      />
+
+      <View style={styles.featuredTextWrap}>
+        <View style={styles.featuredNameRow}>
+          <Text style={styles.featuredArtistName} numberOfLines={1}>
+            {item.name}
+          </Text>
+          {item.isVerified ? (
+            <View style={styles.verifiedWrap}>
+              <BadgeCheck color="#4AA3FF" fill="#4AA3FF" size={18} />
+            </View>
+          ) : null}
+        </View>
+
+        {item.isSubscriptionBased ? (
+          <View style={styles.subscriptionTag}>
+            <Text style={styles.subscriptionTagText}>{item.subText}</Text>
           </View>
+        ) : (
+          <Text style={styles.featuredSubText}>{item.subText}</Text>
         )}
-      </LinearGradient>
+      </View>
     </Pressable>
   );
 
-  if (loading) return <View style={styles.loading}><ActivityIndicator color="#FF4500" /></View>;
+  const renderTrendingArtist = ({ item }: { item: ArtistCard }) => (
+    <Pressable style={styles.trendingCard} onPress={() => onPressArtist(item.id)}>
+      <Image source={{ uri: item.image }} style={styles.trendingImg} />
+      <Text style={styles.trendingName} numberOfLines={1}>
+        {item.name}
+      </Text>
+      <Text style={styles.trendingSubText} numberOfLines={1}>
+        {item.subText}
+      </Text>
+    </Pressable>
+  );
+
+  const renderRecentlyAdded = ({ item }: { item: ContentCard }) => (
+    <Pressable style={styles.recentCard} onPress={() => onPressContent(item)}>
+      <Image source={{ uri: item.thumbnail }} style={styles.recentImg} />
+      {item.isLocked ? (
+        <View style={styles.lockPill}>
+          <Lock color="#fff" size={14} />
+        </View>
+      ) : null}
+    </Pressable>
+  );
+
+  if (loading)
+    return (
+      <View style={styles.loading}>
+        <ActivityIndicator color="#FF6A00" />
+      </View>
+    );
 
   return (
     <SafeAreaView style={styles.container}>
-      <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 150 }}>
-        
-        {/* Header */}
+      <ScrollView
+        showsVerticalScrollIndicator={false}
+        contentContainerStyle={{ paddingBottom: tabBarHeight + 140 }}
+      >
+        {/* HEADER */}
         <View style={styles.header}>
-          <Text style={styles.headerTitle}></Text>
-          <Pressable><Search color="#fff" size={24} /></Pressable>
+          <Text style={styles.headerTitle}>Discover</Text>
+
+          <Pressable
+            onPress={() =>
+              navigation.getParent()?.navigate('Search')
+            }
+          >
+            <Search color="#fff" size={22} />
+          </Pressable>
         </View>
 
-        {/* Featured Slider */}
+        {/* FEATURED ARTISTS */}
+        <Text style={styles.sectionTitleTop}>Featured Artists</Text>
         <FlatList
-          data={content.slice(0, 3)}
+          data={featuredArtists}
           horizontal
-          renderItem={renderFeaturedCard}
-          keyExtractor={(item) => item.id.toString()}
+          renderItem={renderFeaturedArtist}
+          keyExtractor={(item) => item.id}
           showsHorizontalScrollIndicator={false}
-          snapToInterval={width * 0.75 + 20}
-          decelerationRate="fast"
-          contentContainerStyle={{ paddingLeft: 20 }}
+          nestedScrollEnabled
+          contentContainerStyle={{ paddingLeft: 18, paddingRight: 8 }}
         />
 
-        {/* Trending Artists Section */}
-        <View style={styles.sectionHeader}>
+        {/* TRENDING ARTISTS */}
+        <View style={styles.sectionHeaderRow}>
           <Text style={styles.sectionTitle}>Trending Artists</Text>
-          <Pressable onPress={onSeeAll}><Text style={styles.seeAll}>See All {'>'}</Text></Pressable>
+          <TouchableOpacity onPress={onPressSeeAllTrending} activeOpacity={0.7}>
+            <Text style={styles.seeAll}>See All  &gt;</Text>
+          </TouchableOpacity>
         </View>
-
         <FlatList
           data={trendingArtists}
           horizontal
           showsHorizontalScrollIndicator={false}
-          contentContainerStyle={{ paddingLeft: 20 }}
-          renderItem={({ item }) => (
-            <View style={styles.artistCard}>
-              <Image source={{ uri: item.banner || 'https://via.placeholder.com/100' }} style={styles.artistImg} />
-              <Text style={styles.artistName} numberOfLines={1}>{item.name}</Text>
-              <Text style={styles.artistSubText}>Artist</Text>
-            </View>
-          )}
+          contentContainerStyle={{ paddingLeft: 18, paddingRight: 8 }}
+          renderItem={renderTrendingArtist}
+          keyExtractor={(item) => item.id}
+          nestedScrollEnabled
         />
 
-        {/* Secondary Trending Grid */}
-        <Text style={[styles.sectionTitle, { marginLeft: 20, marginTop: 25 }]}>Trending Artists</Text>
-        <View style={styles.gridContainer}>
-          {content.slice(3, 9).map((item) => (
-            <Pressable key={item.id} style={styles.gridItem} onPress={() => setCurrentSong(item)}>
-              <Image source={{ uri: item.artwork }} style={styles.gridImg} />
-            </Pressable>
-          ))}
-        </View>
+        {/* RECENTLY ADDED */}
+        <Text style={styles.sectionTitleTop}>Recently Added</Text>
+        <FlatList
+          data={recentlyAdded}
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          nestedScrollEnabled
+          contentContainerStyle={{ paddingLeft: 18, paddingRight: 8 }}
+          renderItem={renderRecentlyAdded}
+          keyExtractor={(item) => item.id}
+        />
       </ScrollView>
 
-      {/* Mini Player */}
+      {/* MINI PLAYER */}
       {currentSong && (
-        <BlurPlayer song={currentSong} isPlaying={isPlaying} setIsPlaying={setIsPlaying} />
-      )}
+        <View
+          style={[
+            styles.miniPlayer,
+            { bottom: tabBarHeight + 12 },
+          ]}
+        >
+          <Image
+            source={{ uri: currentSong.thumbnail }}
+            style={styles.miniPlayerImg}
+          />
 
-      {/* Footer Tab Bar */}
-      <View style={styles.footer}>
-        <TabItem icon={HomeIcon} label="Home" active={activeTab === 'Home'} onPress={() => setActiveTab('Home')} />
-        <TabItem icon={Search} label="Search" active={activeTab === 'Search'} onPress={() => setActiveTab('Search')} />
-        <TabItem icon={Library} label="Library" active={activeTab === 'Library'} onPress={() => setActiveTab('Library')} />
-        <TabItem icon={User} label="Account" active={activeTab === 'Account'} onPress={() => setActiveTab('Account')} />
-      </View>
+          <View style={{ flex: 1, marginLeft: 10 }}>
+            <Text style={styles.miniSongTitle}>
+              {currentSong.title}
+            </Text>
+            <Text style={styles.miniArtistName}>
+              {currentSong.artist}
+            </Text>
+            <View style={styles.miniProgressTrack}>
+              <View style={[styles.miniProgressFill, { width: `${miniProgress * 100}%` }]} />
+            </View>
+          </View>
+
+          <Pressable onPress={() => setIsPlaying(!isPlaying)} style={styles.miniControlBtn}>
+            {isPlaying ? (
+              <Pause color="#fff" size={22} />
+            ) : (
+              <Play color="#fff" size={22} />
+            )}
+          </Pressable>
+
+          <Pressable onPress={() => {}} style={[styles.miniControlBtn, { marginLeft: 10 }]}>
+            <SkipForward color="#fff" size={20} />
+          </Pressable>
+        </View>
+      )}
     </SafeAreaView>
   );
 }
 
-const BlurPlayer = ({ song, isPlaying, setIsPlaying }) => (
-  <View style={styles.miniPlayer}>
-    <Image source={{ uri: song.artwork }} style={styles.miniPlayerImg} />
-    <View style={{ flex: 1, marginLeft: 12 }}>
-      <Text style={styles.miniSongTitle}>{song.title}</Text>
-      <Text style={styles.miniArtistName}>{song.artistName || 'Unknown'}</Text>
-      <View style={styles.progressBar}><View style={styles.progressFill} /></View>
-    </View>
-    <View style={styles.miniControls}>
-      <Pressable onPress={() => setIsPlaying(!isPlaying)}>
-        {isPlaying ? <Pause color="#fff" fill="#fff" size={24} /> : <Play color="#fff" fill="#fff" size={24} />}
-      </Pressable>
-      <FastForward color="#fff" fill="#fff" size={24} style={{ marginLeft: 15 }} />
-    </View>
-  </View>
-);
-
-const TabItem = ({ icon: Icon, label, active, onPress }) => (
-  <Pressable style={styles.tabItem} onPress={onPress}>
-    <Icon color={active ? '#fff' : '#666'} size={24} />
-    <Text style={[styles.tabLabel, { color: active ? '#fff' : '#666' }]}>{label}</Text>
-  </Pressable>
-);
+/* ================================= */
+/* STYLES */
+/* ================================= */
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#000' },
-  loading: { flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: '#000' },
-  header: { flexDirection: 'row', justifyContent: 'space-between', padding: 20, alignItems: 'center' },
-  headerTitle: { color: '#fff', fontSize: 28, fontWeight: 'bold' },
-  featuredCard: { width: width * 0.75, height: 200, borderRadius: 20, overflow: 'hidden', marginRight: 15 },
+
+  loading: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: '#000',
+  },
+
+  header: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    paddingHorizontal: 18,
+    paddingTop: 12,
+    paddingBottom: 10,
+  },
+
+  headerTitle: {
+    color: '#fff',
+    fontSize: 28,
+    fontWeight: '800',
+    letterSpacing: 0.2,
+  },
+
+  sectionTitleTop: {
+    color: 'rgba(255,255,255,0.75)',
+    fontSize: 16,
+    fontWeight: '700',
+    marginTop: 10,
+    marginBottom: 10,
+    paddingHorizontal: 18,
+  },
+
+  sectionHeaderRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 18,
+    marginTop: 22,
+    marginBottom: 10,
+  },
+
+  seeAll: {
+    color: 'rgba(255,255,255,0.45)',
+    fontSize: 12,
+    fontWeight: '600',
+  },
+
+  featuredCard: {
+    width: width * 0.62,
+    height: 178,
+    borderRadius: 18,
+    overflow: 'hidden',
+    marginRight: 12,
+    backgroundColor: 'rgba(255,255,255,0.04)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.06)',
+  },
+
   featuredImg: { width: '100%', height: '100%' },
-  featuredOverlay: { ...StyleSheet.absoluteFillObject, justifyContent: 'flex-end', padding: 15 },
-  featuredArtistName: { color: '#fff', fontSize: 20, fontWeight: 'bold' },
-  lockedBadge: { backgroundColor: '#8B4513', paddingHorizontal: 10, paddingVertical: 4, borderRadius: 5, alignSelf: 'flex-start', marginTop: 5 },
-  lockedText: { color: '#fff', fontSize: 10, fontWeight: 'bold' },
-  sectionHeader: { flexDirection: 'row', justifyContent: 'space-between', padding: 20, alignItems: 'center' },
-  sectionTitle: { color: '#fff', fontSize: 20, fontWeight: 'bold' },
-  seeAll: { color: '#888', fontSize: 14 },
-  artistCard: { width: 100, marginRight: 15, alignItems: 'center' },
-  artistImg: { width: 100, height: 100, borderRadius: 15 },
-  artistName: { color: '#fff', marginTop: 8, fontSize: 14, fontWeight: '600' },
-  artistSubText: { color: '#666', fontSize: 12 },
-  gridContainer: { flexDirection: 'row', flexWrap: 'wrap', paddingHorizontal: 15, justifyContent: 'space-between' },
-  gridItem: { width: '31%', aspectRatio: 1, marginBottom: 10, borderRadius: 10, overflow: 'hidden' },
-  gridImg: { width: '100%', height: '100%' },
-  miniPlayer: { position: 'absolute', bottom: 85, left: 15, right: 15, height: 70, backgroundColor: 'rgba(30,30,30,0.95)', borderRadius: 15, flexDirection: 'row', alignItems: 'center', paddingHorizontal: 10, borderWidth: 1, borderColor: '#333' },
-  miniPlayerImg: { width: 50, height: 50, borderRadius: 8 },
-  miniSongTitle: { color: '#fff', fontSize: 15, fontWeight: 'bold' },
-  miniArtistName: { color: '#888', fontSize: 12 },
-  progressBar: { height: 2, backgroundColor: '#444', marginTop: 8, borderRadius: 1 },
-  progressFill: { width: '40%', height: '100%', backgroundColor: '#fff' },
-  miniControls: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 10 },
-  footer: { position: 'absolute', bottom: 0, width: '100%', height: 80, backgroundColor: '#000', flexDirection: 'row', justifyContent: 'space-around', borderTopWidth: 1, borderTopColor: '#222', paddingBottom: 10 },
-  tabItem: { alignItems: 'center', justifyContent: 'center' },
-  tabLabel: { fontSize: 10, marginTop: 4 }
+
+  featuredOverlay: {
+    ...StyleSheet.absoluteFillObject,
+  },
+
+  featuredTextWrap: {
+    position: 'absolute',
+    left: 14,
+    right: 14,
+    bottom: 12,
+  },
+
+  featuredNameRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+
+  featuredArtistName: {
+    color: '#fff',
+    fontSize: 18,
+    fontWeight: '800',
+    flex: 0,
+  },
+
+  verifiedWrap: {
+    marginLeft: 8,
+    marginTop: 2,
+  },
+
+  subscriptionTag: {
+    marginTop: 8,
+    alignSelf: 'flex-start',
+    backgroundColor: 'rgba(255,122,24,0.20)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,122,24,0.35)',
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 10,
+  },
+
+  subscriptionTagText: {
+    color: '#FF7A18',
+    fontSize: 11,
+    fontWeight: '800',
+  },
+
+  featuredSubText: {
+    marginTop: 6,
+    color: 'rgba(255,255,255,0.55)',
+    fontSize: 12,
+    fontWeight: '600',
+  },
+
+  sectionTitle: {
+    color: 'rgba(255,255,255,0.75)',
+    fontSize: 16,
+    fontWeight: '700',
+  },
+
+  trendingCard: {
+    width: 96,
+    marginRight: 12,
+  },
+  trendingImg: {
+    width: 96,
+    height: 96,
+    borderRadius: 16,
+    backgroundColor: 'rgba(255,255,255,0.04)',
+  },
+  trendingName: {
+    color: '#fff',
+    fontSize: 13,
+    fontWeight: '700',
+    marginTop: 8,
+  },
+  trendingSubText: {
+    color: 'rgba(255,255,255,0.45)',
+    fontSize: 11,
+    fontWeight: '600',
+    marginTop: 3,
+  },
+
+  recentCard: {
+    width: width * 0.48,
+    height: 110,
+    borderRadius: 16,
+    overflow: 'hidden',
+    marginRight: 12,
+    backgroundColor: 'rgba(255,255,255,0.04)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.06)',
+  },
+  recentImg: {
+    width: '100%',
+    height: '100%',
+  },
+  lockPill: {
+    position: 'absolute',
+    top: 10,
+    right: 10,
+    width: 28,
+    height: 28,
+    borderRadius: 10,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: 'rgba(0,0,0,0.45)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.15)',
+  },
+
+  miniPlayer: {
+    position: 'absolute',
+    left: 15,
+    right: 15,
+    height: 70,
+    backgroundColor: 'rgba(18,18,18,0.78)',
+    borderRadius: 18,
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 10,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.08)',
+  },
+
+  miniPlayerImg: {
+    width: 50,
+    height: 50,
+    borderRadius: 8,
+  },
+
+  miniSongTitle: {
+    color: '#fff',
+    fontWeight: 'bold',
+  },
+
+  miniArtistName: {
+    color: '#888',
+  },
+
+  miniProgressTrack: {
+    marginTop: 8,
+    height: 2,
+    borderRadius: 2,
+    backgroundColor: 'rgba(255,255,255,0.18)',
+    overflow: 'hidden',
+  },
+  miniProgressFill: {
+    height: '100%',
+    backgroundColor: '#fff',
+  },
+
+  miniControlBtn: {
+    width: 40,
+    height: 40,
+    borderRadius: 14,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
 });

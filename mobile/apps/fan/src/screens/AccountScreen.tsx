@@ -1,0 +1,716 @@
+import React from 'react';
+import {
+  Alert,
+  Modal,
+  ScrollView,
+  StyleSheet,
+  Switch,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  View,
+} from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
+import { useAuth } from '../store/authStore';
+import { CreditCard, HelpCircle, LogOut, User } from 'lucide-react-native';
+import { userService, type AudioQualityPref, type Transaction } from '../services/userService';
+
+function PremiumBadge() {
+  return (
+    <View style={styles.premiumBadge}>
+      <Text style={styles.premiumBadgeText}>Premium Member</Text>
+    </View>
+  );
+}
+
+export default function AccountScreen() {
+  const { user, userAccountStatus, logout } = useAuth();
+
+  const [isLoading, setIsLoading] = React.useState(true);
+  const [profileName, setProfileName] = React.useState<string>('');
+  const [isPremium, setIsPremium] = React.useState(false);
+  const [subscriptionCount, setSubscriptionCount] = React.useState(0);
+
+  const [listenTime, setListenTime] = React.useState<string>('');
+  const [transactions, setTransactions] = React.useState<Transaction[]>([]);
+
+  const [pushNotifications, setPushNotifications] = React.useState(true);
+  const [audioQuality, setAudioQuality] = React.useState<AudioQualityPref>('HIGH');
+
+  const [showTransactions, setShowTransactions] = React.useState(false);
+  const [showEditProfile, setShowEditProfile] = React.useState(false);
+  const [isSaving, setIsSaving] = React.useState(false);
+
+  const [editName, setEditName] = React.useState('');
+  const [editImageUrl, setEditImageUrl] = React.useState('');
+  const [editPassword, setEditPassword] = React.useState('');
+
+  const refresh = React.useCallback(async () => {
+    setIsLoading(true);
+    try {
+      const [p, t, l] = await Promise.all([
+        userService.getUserProfile(),
+        userService.getTransactions(),
+        userService.getListenTime(),
+      ]);
+
+      setProfileName(p.name);
+      setIsPremium(p.isPremium);
+      setSubscriptionCount(p.subscriptionCount);
+      setTransactions(t);
+      setListenTime(l.formattedTime);
+    } finally {
+      setIsLoading(false);
+    }
+  }, []);
+
+  React.useEffect(() => {
+    refresh();
+  }, [refresh]);
+
+  const handleLogout = () => {
+    Alert.alert(
+      'Log Out',
+      'Are you sure you want to log out?',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        { text: 'Log Out', style: 'destructive', onPress: logout },
+      ]
+    );
+  };
+
+  const getStatusColor = () => {
+    return userAccountStatus === 'ACTIVE' ? '#10B981' : '#DC2626';
+  };
+
+  const getStatusText = () => {
+    return userAccountStatus === 'ACTIVE' ? 'Active' : 'Suspended';
+  };
+
+  const handleToggleNotifications = async (next: boolean) => {
+    setPushNotifications(next);
+    try {
+      await userService.updateSettings({ pushNotifications: next });
+    } catch {
+      setPushNotifications((v) => !v);
+    }
+  };
+
+  const handleSelectQuality = async (next: AudioQualityPref) => {
+    setAudioQuality(next);
+    try {
+      await userService.updateSettings({ audioQuality: next });
+    } catch {
+      // ignore
+    }
+  };
+
+  const openEditProfile = () => {
+    setEditName(profileName || user?.name?.toString?.() || '');
+    setEditImageUrl('');
+    setEditPassword('');
+    setShowEditProfile(true);
+  };
+
+  const submitEditProfile = async () => {
+    setIsSaving(true);
+    try {
+      const updated = await userService.updateProfile({
+        name: editName,
+        profileImageUrl: editImageUrl,
+        password: editPassword,
+      });
+      setProfileName(updated.name);
+      setShowEditProfile(false);
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  return (
+    <SafeAreaView style={styles.container}>
+      <ScrollView style={styles.scrollView} showsVerticalScrollIndicator={false}>
+        <View style={styles.header}>
+          <Text style={styles.title}>Account</Text>
+          <Text style={styles.sub}>Manage your profile and settings.</Text>
+        </View>
+
+        <View style={styles.section}>
+          <View style={styles.profileCard}>
+            <View style={styles.profileTitleRow}>
+              <Text style={styles.profileName}>{profileName || user?.name?.toString?.() || 'User'}</Text>
+              {!isLoading && isPremium ? <PremiumBadge /> : null}
+            </View>
+            <Text style={styles.profileEmail}>{user?.email || 'Not available'}</Text>
+
+            <View style={styles.statsRow}>
+              <View style={styles.statBox}>
+                <Text style={styles.statValue}>{subscriptionCount}</Text>
+                <Text style={styles.statLabel}>Subscribed Artists</Text>
+              </View>
+              <View style={styles.statBox}>
+                <Text style={styles.statValue}>{listenTime || '—'}</Text>
+                <Text style={styles.statLabel}>Monthly Listening</Text>
+              </View>
+            </View>
+
+            <TouchableOpacity style={styles.primaryButton} onPress={openEditProfile} disabled={isLoading}>
+              <Text style={styles.primaryButtonText}>Edit Profile</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+
+        {/* Account Status */}
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>Account Status</Text>
+          <View style={styles.statusCard}>
+            <View style={styles.statusLeft}>
+              <User size={20} color="#fff" />
+              <View style={styles.statusInfo}>
+                <Text style={styles.statusLabel}>Account Status</Text>
+                <Text style={[styles.statusValue, { color: getStatusColor() }]}>
+                  {getStatusText()}
+                </Text>
+              </View>
+            </View>
+            <View style={[styles.statusIndicator, { backgroundColor: getStatusColor() }]} />
+          </View>
+        </View>
+
+        {/* Account Settings */}
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>Settings</Text>
+          
+          <TouchableOpacity style={styles.menuItem} onPress={() => setShowTransactions(true)}>
+            <CreditCard size={20} color="#fff" />
+            <Text style={styles.menuText}>Subscription & Billing</Text>
+          </TouchableOpacity>
+
+          <View style={styles.prefRow}>
+            <Text style={styles.prefLabel}>Push Notifications</Text>
+            <Switch value={pushNotifications} onValueChange={handleToggleNotifications} />
+          </View>
+
+          <View style={styles.qualityCard}>
+            <Text style={styles.qualityTitle}>Audio Quality</Text>
+            <View style={styles.qualityRow}>
+              <TouchableOpacity
+                style={[styles.qualityPill, audioQuality === 'HIGH' ? styles.qualityPillActive : null]}
+                onPress={() => handleSelectQuality('HIGH')}
+              >
+                <Text style={styles.qualityPillText}>High Quality</Text>
+                <Text style={styles.qualityPillSub}>320kbps</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.qualityPill, audioQuality === 'DATA SAVER' ? styles.qualityPillActive : null]}
+                onPress={() => handleSelectQuality('DATA SAVER')}
+              >
+                <Text style={styles.qualityPillText}>Data Saver</Text>
+                <Text style={styles.qualityPillSub}>96kbps</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+
+          <TouchableOpacity style={styles.menuItem}>
+            <HelpCircle size={20} color="#fff" />
+            <Text style={styles.menuText}>Help & Support</Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity style={styles.menuItem} onPress={handleLogout}>
+            <LogOut size={20} color="#FF6A00" />
+            <Text style={[styles.menuText, { color: '#FF6A00' }]}>Log Out</Text>
+          </TouchableOpacity>
+        </View>
+
+        {/* User Info */}
+        {user && (
+          <View style={styles.section}>
+            <Text style={styles.sectionTitle}>Profile Information</Text>
+            <View style={styles.userInfo}>
+              <Text style={styles.userInfoLabel}>Email</Text>
+              <Text style={styles.userInfoValue}>{user.email || 'Not available'}</Text>
+              <Text style={styles.userInfoLabel}>Name</Text>
+              <Text style={styles.userInfoValue}>{user.name || 'Not set'}</Text>
+            </View>
+          </View>
+        )}
+      </ScrollView>
+
+      <Modal visible={showTransactions} animationType="slide" onRequestClose={() => setShowTransactions(false)}>
+        <SafeAreaView style={styles.modalContainer}>
+          <View style={styles.modalHeader}>
+            <Text style={styles.modalTitle}>Transaction History</Text>
+            <TouchableOpacity onPress={() => setShowTransactions(false)}>
+              <Text style={styles.modalClose}>Close</Text>
+            </TouchableOpacity>
+          </View>
+
+          <ScrollView style={styles.modalScroll} showsVerticalScrollIndicator={false}>
+            {transactions.map((tx) => (
+              <View key={tx.id} style={styles.txRow}>
+                <View style={styles.txLeft}>
+                  <Text style={styles.txArtist}>{tx.artistName}</Text>
+                  <Text style={styles.txDate}>{tx.date}</Text>
+                </View>
+                <View style={styles.txRight}>
+                  <Text style={styles.txAmount}>${tx.amount.toFixed(2)}</Text>
+                  <Text style={styles.txStatus}>{tx.status ?? ''}</Text>
+                </View>
+              </View>
+            ))}
+            {transactions.length === 0 ? (
+              <Text style={styles.emptyText}>No transactions yet.</Text>
+            ) : null}
+          </ScrollView>
+        </SafeAreaView>
+      </Modal>
+
+      <Modal visible={showEditProfile} animationType="fade" transparent onRequestClose={() => setShowEditProfile(false)}>
+        <View style={styles.modalOverlay}>
+          <View style={styles.editModalCard}>
+            <Text style={styles.editTitle}>Edit Profile</Text>
+
+            <Text style={styles.inputLabel}>Name</Text>
+            <TextInput
+              value={editName}
+              onChangeText={setEditName}
+              style={styles.input}
+              placeholder="Your name"
+              placeholderTextColor="rgba(255,255,255,0.35)"
+            />
+
+            <Text style={styles.inputLabel}>Profile Image URL</Text>
+            <TextInput
+              value={editImageUrl}
+              onChangeText={setEditImageUrl}
+              style={styles.input}
+              placeholder="https://..."
+              placeholderTextColor="rgba(255,255,255,0.35)"
+              autoCapitalize="none"
+            />
+
+            <Text style={styles.inputLabel}>Password</Text>
+            <TextInput
+              value={editPassword}
+              onChangeText={setEditPassword}
+              style={styles.input}
+              placeholder="••••••••"
+              placeholderTextColor="rgba(255,255,255,0.35)"
+              secureTextEntry
+            />
+
+            <View style={styles.editActions}>
+              <TouchableOpacity
+                style={[styles.secondaryButton, isSaving ? styles.buttonDisabled : null]}
+                onPress={() => setShowEditProfile(false)}
+                disabled={isSaving}
+              >
+                <Text style={styles.secondaryButtonText}>Cancel</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.primaryButtonSmall, isSaving ? styles.buttonDisabled : null]}
+                onPress={submitEditProfile}
+                disabled={isSaving}
+              >
+                <Text style={styles.primaryButtonText}>{isSaving ? 'Saving…' : 'Save'}</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
+    </SafeAreaView>
+  );
+}
+
+const styles = StyleSheet.create({
+  container: {
+    flex: 1,
+    backgroundColor: '#000',
+  },
+  scrollView: {
+    flex: 1,
+  },
+  header: {
+    alignItems: 'center',
+    paddingTop: 20,
+    paddingBottom: 30,
+    paddingHorizontal: 24,
+  },
+  title: {
+    color: '#fff',
+    fontSize: 28,
+    fontWeight: '800',
+    marginBottom: 8,
+  },
+  sub: {
+    color: 'rgba(255,255,255,0.6)',
+    fontSize: 14,
+    fontWeight: '500',
+    textAlign: 'center',
+  },
+  section: {
+    marginTop: 24,
+    paddingHorizontal: 20,
+  },
+  sectionTitle: {
+    color: 'rgba(255,255,255,0.8)',
+    fontSize: 16,
+    fontWeight: '700',
+    marginBottom: 12,
+    marginLeft: 4,
+  },
+  statusCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    backgroundColor: 'rgba(255,255,255,0.05)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.1)',
+    borderRadius: 16,
+    padding: 16,
+  },
+  statusLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flex: 1,
+  },
+  statusInfo: {
+    marginLeft: 12,
+    flex: 1,
+  },
+  statusLabel: {
+    color: 'rgba(255,255,255,0.6)',
+    fontSize: 13,
+    fontWeight: '500',
+  },
+  statusValue: {
+    color: '#fff',
+    fontSize: 16,
+    fontWeight: '700',
+    marginTop: 2,
+  },
+  statusIndicator: {
+    width: 12,
+    height: 12,
+    borderRadius: 6,
+  },
+  menuItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: 'rgba(255,255,255,0.03)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.08)',
+    borderRadius: 12,
+    padding: 16,
+    marginBottom: 8,
+  },
+  menuContent: {
+    marginLeft: 12,
+    flex: 1,
+  },
+  menuText: {
+    color: '#fff',
+    fontSize: 16,
+    fontWeight: '600',
+  },
+  menuSubText: {
+    color: 'rgba(255,255,255,0.5)',
+    fontSize: 12,
+    fontWeight: '500',
+    marginTop: 2,
+  },
+  userInfo: {
+    backgroundColor: 'rgba(255,255,255,0.03)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.08)',
+    borderRadius: 12,
+    padding: 16,
+  },
+  userInfoLabel: {
+    color: 'rgba(255,255,255,0.6)',
+    fontSize: 13,
+    fontWeight: '500',
+    marginTop: 12,
+    marginBottom: 4,
+  },
+  userInfoValue: {
+    color: '#fff',
+    fontSize: 15,
+    fontWeight: '600',
+  },
+
+  profileCard: {
+    backgroundColor: 'rgba(255,255,255,0.04)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.08)',
+    borderRadius: 16,
+    padding: 16,
+  },
+  profileTitleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  profileName: {
+    color: '#fff',
+    fontSize: 22,
+    fontWeight: '800',
+  },
+  profileEmail: {
+    marginTop: 6,
+    color: 'rgba(255,255,255,0.65)',
+    fontSize: 13,
+    fontWeight: '500',
+  },
+  premiumBadge: {
+    backgroundColor: 'rgba(255,106,0,0.18)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,106,0,0.45)',
+    borderRadius: 999,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+  },
+  premiumBadgeText: {
+    color: '#FF6A00',
+    fontSize: 12,
+    fontWeight: '800',
+  },
+  statsRow: {
+    flexDirection: 'row',
+    gap: 10,
+    marginTop: 14,
+  },
+  statBox: {
+    flex: 1,
+    backgroundColor: 'rgba(255,255,255,0.03)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.06)',
+    borderRadius: 14,
+    paddingVertical: 12,
+    paddingHorizontal: 12,
+  },
+  statValue: {
+    color: '#fff',
+    fontSize: 16,
+    fontWeight: '800',
+  },
+  statLabel: {
+    marginTop: 4,
+    color: 'rgba(255,255,255,0.6)',
+    fontSize: 12,
+    fontWeight: '600',
+  },
+  primaryButton: {
+    marginTop: 14,
+    backgroundColor: '#FF6A00',
+    borderRadius: 12,
+    paddingVertical: 12,
+    alignItems: 'center',
+  },
+  primaryButtonSmall: {
+    flex: 1,
+    backgroundColor: '#FF6A00',
+    borderRadius: 12,
+    paddingVertical: 12,
+    alignItems: 'center',
+  },
+  primaryButtonText: {
+    color: '#000',
+    fontSize: 14,
+    fontWeight: '900',
+  },
+  secondaryButton: {
+    flex: 1,
+    backgroundColor: 'rgba(255,255,255,0.06)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.12)',
+    borderRadius: 12,
+    paddingVertical: 12,
+    alignItems: 'center',
+  },
+  secondaryButtonText: {
+    color: '#fff',
+    fontSize: 14,
+    fontWeight: '800',
+  },
+  buttonDisabled: {
+    opacity: 0.6,
+  },
+  prefRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    backgroundColor: 'rgba(255,255,255,0.03)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.08)',
+    borderRadius: 12,
+    padding: 16,
+    marginBottom: 8,
+  },
+  prefLabel: {
+    color: '#fff',
+    fontSize: 16,
+    fontWeight: '600',
+  },
+  qualityCard: {
+    backgroundColor: 'rgba(255,255,255,0.03)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.08)',
+    borderRadius: 12,
+    padding: 16,
+    marginBottom: 8,
+  },
+  qualityTitle: {
+    color: '#fff',
+    fontSize: 16,
+    fontWeight: '700',
+    marginBottom: 10,
+  },
+  qualityRow: {
+    flexDirection: 'row',
+    gap: 10,
+  },
+  qualityPill: {
+    flex: 1,
+    borderRadius: 12,
+    paddingVertical: 12,
+    paddingHorizontal: 12,
+    backgroundColor: 'rgba(255,255,255,0.03)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.10)',
+  },
+  qualityPillActive: {
+    borderColor: 'rgba(255,106,0,0.6)',
+    backgroundColor: 'rgba(255,106,0,0.12)',
+  },
+  qualityPillText: {
+    color: '#fff',
+    fontSize: 13,
+    fontWeight: '800',
+  },
+  qualityPillSub: {
+    marginTop: 4,
+    color: 'rgba(255,255,255,0.55)',
+    fontSize: 11,
+    fontWeight: '700',
+  },
+
+  modalContainer: {
+    flex: 1,
+    backgroundColor: '#000',
+  },
+  modalHeader: {
+    paddingHorizontal: 18,
+    paddingVertical: 14,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    borderBottomWidth: 1,
+    borderBottomColor: 'rgba(255,255,255,0.08)',
+  },
+  modalTitle: {
+    color: '#fff',
+    fontSize: 18,
+    fontWeight: '800',
+  },
+  modalClose: {
+    color: '#FF6A00',
+    fontSize: 14,
+    fontWeight: '800',
+  },
+  modalScroll: {
+    paddingHorizontal: 18,
+    paddingTop: 12,
+  },
+  txRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    backgroundColor: 'rgba(255,255,255,0.03)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.08)',
+    borderRadius: 14,
+    padding: 14,
+    marginBottom: 10,
+  },
+  txLeft: {
+    flex: 1,
+  },
+  txArtist: {
+    color: '#fff',
+    fontSize: 15,
+    fontWeight: '800',
+  },
+  txDate: {
+    marginTop: 4,
+    color: 'rgba(255,255,255,0.6)',
+    fontSize: 12,
+    fontWeight: '600',
+  },
+  txRight: {
+    alignItems: 'flex-end',
+    marginLeft: 12,
+  },
+  txAmount: {
+    color: '#fff',
+    fontSize: 15,
+    fontWeight: '900',
+  },
+  txStatus: {
+    marginTop: 4,
+    color: 'rgba(255,255,255,0.5)',
+    fontSize: 11,
+    fontWeight: '700',
+  },
+  emptyText: {
+    marginTop: 20,
+    color: 'rgba(255,255,255,0.6)',
+    fontSize: 14,
+    fontWeight: '600',
+    textAlign: 'center',
+  },
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.7)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 18,
+  },
+  editModalCard: {
+    width: '100%',
+    backgroundColor: '#0B0B0B',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.10)',
+    borderRadius: 16,
+    padding: 16,
+  },
+  editTitle: {
+    color: '#fff',
+    fontSize: 18,
+    fontWeight: '900',
+    marginBottom: 12,
+  },
+  inputLabel: {
+    color: 'rgba(255,255,255,0.7)',
+    fontSize: 12,
+    fontWeight: '700',
+    marginTop: 10,
+    marginBottom: 6,
+  },
+  input: {
+    backgroundColor: 'rgba(255,255,255,0.04)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.10)',
+    borderRadius: 12,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    color: '#fff',
+    fontSize: 14,
+    fontWeight: '600',
+  },
+  editActions: {
+    flexDirection: 'row',
+    gap: 10,
+    marginTop: 16,
+  },
+});

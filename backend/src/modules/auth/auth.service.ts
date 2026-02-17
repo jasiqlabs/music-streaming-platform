@@ -25,8 +25,18 @@ export class AuthService {
 
   async login(email: string, password: string) {
     try {
-      const userQuery = "SELECT id, email, password FROM users WHERE email = $1";
-      const userResult = await pool.query(userQuery, [email]);
+      let userResult;
+      try {
+        const userQuery = "SELECT id, email, password, status FROM users WHERE email = $1";
+        userResult = await pool.query(userQuery, [email]);
+      } catch (err: any) {
+        if (err?.code === "42703") {
+          const userQuery = "SELECT id, email, password FROM users WHERE email = $1";
+          userResult = await pool.query(userQuery, [email]);
+        } else {
+          throw err;
+        }
+      }
 
       if (userResult.rows.length === 0) {
         throw new Error("Invalid credentials");
@@ -48,7 +58,7 @@ export class AuthService {
       return {
         success: true,
         token,
-        user: { id: user.id, email: user.email }
+        user: { id: user.id, email: user.email, status: user.status ?? "ACTIVE" }
       };
     } catch (error) {
       throw new Error("Invalid credentials");

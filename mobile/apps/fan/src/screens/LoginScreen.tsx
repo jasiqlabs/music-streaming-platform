@@ -14,17 +14,19 @@ import {
   View,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
+import { Eye, EyeOff } from 'lucide-react-native';
 
 import type { RootStackParamList } from '../navigation/types';
 import { useAuth } from '../store/authStore';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'Login'>;
 
-export default function LoginScreen({ navigation }: Props) {
+export default function LoginScreen({ navigation }: Partial<Props>) {
   const { login, isLoggingIn } = useAuth();
 
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [isPasswordVisible, setIsPasswordVisible] = useState(false);
 
   const canSubmit = useMemo(
     () => email.trim() && password && !isLoggingIn,
@@ -34,9 +36,18 @@ export default function LoginScreen({ navigation }: Props) {
   const onSubmit = async () => {
     try {
       await login(email.trim(), password);
-      navigation.reset({ index: 0, routes: [{ name: 'Home' }] });
     } catch (err: any) {
-      Alert.alert('Login Error', err?.message || 'Login failed');
+      const status = err?.response?.status;
+      const serverMessage = err?.response?.data?.message;
+      const message =
+        typeof serverMessage === 'string'
+          ? serverMessage
+          : status === 403
+            ? 'Access forbidden.'
+            : status === 401
+              ? 'Invalid credentials.'
+              : err?.message || 'Login failed';
+      Alert.alert('Login Error', message);
     }
   };
 
@@ -64,16 +75,34 @@ export default function LoginScreen({ navigation }: Props) {
             style={styles.input}
             value={email}
             onChangeText={setEmail}
+            autoCapitalize="none"
+            autoCorrect={false}
+            keyboardType="email-address"
           />
 
-          <TextInput
-            placeholder="Password"
-            placeholderTextColor="#aaa"
-            style={styles.input}
-            secureTextEntry
-            value={password}
-            onChangeText={setPassword}
-          />
+          <View style={styles.passwordContainer}>
+            <TextInput
+              placeholder="Password"
+              placeholderTextColor="#aaa"
+              style={styles.passwordInput}
+              secureTextEntry={!isPasswordVisible}
+              value={password}
+              onChangeText={setPassword}
+              autoCapitalize="none"
+              autoCorrect={false}
+            />
+            <Pressable
+              onPress={() => setIsPasswordVisible((v) => !v)}
+              hitSlop={10}
+              style={styles.eyeButton}
+            >
+              {isPasswordVisible ? (
+                <EyeOff color="#ddd" size={18} />
+              ) : (
+                <Eye color="#ddd" size={18} />
+              )}
+            </Pressable>
+          </View>
 
           <Pressable onPress={onSubmit} disabled={!canSubmit}>
             <LinearGradient
@@ -134,6 +163,27 @@ const styles = StyleSheet.create({
     marginBottom: 14,
     borderWidth: 1,
     borderColor: 'rgba(255,255,255,0.1)',
+  },
+  passwordContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: 'rgba(255,255,255,0.05)',
+    borderRadius: 14,
+    marginBottom: 14,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.1)',
+  },
+  passwordInput: {
+    flex: 1,
+    padding: 14,
+    paddingRight: 44,
+    color: '#fff',
+  },
+  eyeButton: {
+    position: 'absolute',
+    right: 12,
+    height: '100%',
+    justifyContent: 'center',
   },
   button: {
     paddingVertical: 14,
