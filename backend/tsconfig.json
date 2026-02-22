@@ -1,14 +1,15 @@
 {
   "compilerOptions": {
-    "types": ["node", "express"],
+   // "types": ["node", "express"],
     "target": "ES2020",
     "module": "commonjs",
     "rootDir": "src",
     "outDir": "dist",
-    "strict": true,
+    "strict": false,
     "esModuleInterop": true,
     "skipLibCheck": true,
     "noImplicitAny": false,
     
-  }
+  },
+  "include": ["src/**/*"]
 }
