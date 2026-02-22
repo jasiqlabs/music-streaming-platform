@@ -14,35 +14,37 @@ model playing_with_neon {
 }
 
 model users {
-  id         Int       @id @default(autoincrement())
-  name       String?   @db.VarChar(100)
-  email      String    @unique @db.VarChar(100)
-  password   String    @db.VarChar(255)
-  role       String?   @default("user") @db.VarChar(20)
-  status     String    @default("ACTIVE") @db.VarChar(20)
+  id          Int      @id @default(autoincrement())
+  name        String?  @db.VarChar(100)
+  email       String   @unique @db.VarChar(100)
+  password    String   @db.VarChar(255)
+  role        String?  @default("user") @db.VarChar(20)
+  status      String   @default("ACTIVE") @db.VarChar(20)
   is_verified Boolean?
-  verified   Boolean?
+  verified    Boolean?
 
   created_at DateTime  @default(now()) @db.Timestamptz(6)
   updated_at DateTime  @default(now()) @db.Timestamptz(6)
   last_login DateTime? @db.Timestamptz(6)
 
-  profile_image_url          String?  @db.Text
-  banner_image_url           String?  @db.Text
-  bio                        String?  @db.Text
-  phone                      String?  @db.VarChar(30)
-  genre                      String?  @db.VarChar(120)
-  social_links               Json?
-  revenue_share_percentage   Decimal  @default(90) @db.Decimal
-  admin_remarks              String?  @db.Text
-  subscription_price         Decimal  @default(0) @db.Decimal
+  profile_image_url        String? @db.Text
+  banner_image_url         String? @db.Text
+  bio                      String? @db.Text
+  phone                    String? @db.VarChar(30)
+  genre                    String? @db.VarChar(120)
+  social_links             Json?
+  revenue_share_percentage Decimal @default(90) @db.Decimal
+  admin_remarks            String? @db.Text
+  subscription_price       Decimal @default(0) @db.Decimal
 
-  subscription_count         Int      @default(0)
-  total_listen_time          Int      @default(0)
-  audio_quality_pref         String   @default("HIGH") @db.VarChar(20)
-  notifications_pref         Boolean  @default(true)
+  subscription_count Int     @default(0)
+  total_listen_time  Int     @default(0)
+  audio_quality_pref String  @default("HIGH") @db.VarChar(20)
+  notifications_pref Boolean @default(true)
 
-  transactions        transactions[]
+  transactions transactions[]
+
+  artist_stats artist_stats[]
 }
 
 model transactions {
