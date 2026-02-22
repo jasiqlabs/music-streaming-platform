@@ -1,8 +1,8 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import axios, { AxiosHeaders } from 'axios';
 
-const API_BASE_URL = 'http://192.168.31.184:8000/api';
-const HOST_BASE_URL = API_BASE_URL.replace(/\/api\/?$/, '');
+const HOST_BASE_URL = 'http://192.168.31.184:8000';
+const API_BASE_URL = `${HOST_BASE_URL}/api/v1/fan`;
 export const JWT_STORAGE_KEY = 'jwt';
 
 export const api = axios.create({
@@ -14,7 +14,7 @@ export const api = axios.create({
 });
 
 export const apiV1 = axios.create({
-  baseURL: `${HOST_BASE_URL}/v1`,
+  baseURL: `${HOST_BASE_URL}/api/v1/fan`,
   headers: {
     'Content-Type': 'application/json',
   },

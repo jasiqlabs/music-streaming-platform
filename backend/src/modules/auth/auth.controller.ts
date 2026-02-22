@@ -37,8 +37,35 @@ export class AuthController {
 
       const result = await authService.login(email, password);
 
+      const correlationId = (req as any)?.correlationId || "-";
+      const role = (result as any)?.user?.role ?? null;
+      const userId = (result as any)?.user?.id ?? null;
+      const pendingApproval = Boolean((result as any)?.pendingApproval);
+
+      console.log(
+        `[AUDIT] ${JSON.stringify({
+          event: "user_login",
+          correlationId,
+          email,
+          userId,
+          role: role ? role.toString().toUpperCase() : null,
+          pendingApproval
+        })}`
+      );
+
       return res.json(result);
     } catch (err: any) {
+      const correlationId = (req as any)?.correlationId || "-";
+      console.log(
+        `[AUDIT] ${JSON.stringify({
+          event: "user_login",
+          outcome: "failed",
+          correlationId,
+          email: (req as any)?.body?.email ?? null,
+          message: err?.message || "Invalid credentials"
+        })}`
+      );
+
       return res.status(err?.status || 401).json({
         success: false,
         message: err?.message || "Invalid credentials"
@@ -52,12 +79,28 @@ export class AuthController {
 
       let dbUser: any = null;
       try {
-        const userQuery = "SELECT id, email, status FROM users WHERE id = $1";
-        const userResult = await pool.query(userQuery, [tokenUser?.id]);
-        dbUser = userResult.rows?.[0] || null;
+        try {
+          const userQuery =
+            "SELECT id, email, status, role, COALESCE(is_verified, verified, false) as is_verified FROM users WHERE id = $1";
+          const userResult = await pool.query(userQuery, [tokenUser?.id]);
+          dbUser = userResult.rows?.[0] || null;
+        } catch (err2: any) {
+          if (err2?.code !== "42703") throw err2;
+          try {
+            const userQuery =
+              "SELECT id, email, status, role, COALESCE(verified, false) as is_verified FROM users WHERE id = $1";
+            const userResult = await pool.query(userQuery, [tokenUser?.id]);
+            dbUser = userResult.rows?.[0] || null;
+          } catch (err3: any) {
+            if (err3?.code !== "42703") throw err3;
+            const userQuery = "SELECT id, email, status, role FROM users WHERE id = $1";
+            const userResult = await pool.query(userQuery, [tokenUser?.id]);
+            dbUser = userResult.rows?.[0] || null;
+          }
+        }
       } catch (err: any) {
         if (err?.code === "42703") {
-          const userQuery = "SELECT id, email FROM users WHERE id = $1";
+          const userQuery = "SELECT id, email, role FROM users WHERE id = $1";
           const userResult = await pool.query(userQuery, [tokenUser?.id]);
           dbUser = userResult.rows?.[0] || null;
         } else {
@@ -70,6 +113,8 @@ export class AuthController {
         user: {
           ...(tokenUser || {}),
           ...(dbUser || {}),
+          role: (dbUser?.role ?? (tokenUser as any)?.role ?? null) || null,
+          isVerified: Boolean(dbUser?.is_verified ?? (tokenUser as any)?.isVerified ?? false),
           status: dbUser?.status ?? (tokenUser as any)?.status ?? "ACTIVE"
         }
       });

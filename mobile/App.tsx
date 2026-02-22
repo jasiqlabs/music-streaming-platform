@@ -7,6 +7,18 @@ import { ConnectivityProvider } from './apps/fan/src/providers/ConnectivityProvi
 import AccountSuspendedScreen from './apps/fan/src/screens/AccountSuspendedScreen';
 import LoginScreen from './apps/fan/src/screens/LoginScreen';
 import { Linking } from 'react-native';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import ErrorBoundary from './apps/fan/src/ui/ErrorBoundary';
+
+const queryClient = new QueryClient({
+  defaultOptions: {
+    queries: {
+      staleTime: 5 * 60 * 1000,
+      refetchOnWindowFocus: false,
+      retry: 1,
+    },
+  },
+});
 
 function AppContent() {
   const { token, user, isRestoring, logout } = useAuth();
@@ -49,8 +61,12 @@ function AppContent() {
 
 export default function App() {
   return (
-    <AuthProvider>
-      <AppContent />
-    </AuthProvider>
+    <ErrorBoundary label="Fan App">
+      <QueryClientProvider client={queryClient}>
+        <AuthProvider>
+          <AppContent />
+        </AuthProvider>
+      </QueryClientProvider>
+    </ErrorBoundary>
   );
 }

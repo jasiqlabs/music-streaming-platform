@@ -19,8 +19,9 @@ import { useBottomTabBarHeight } from '@react-navigation/bottom-tabs';
 import { ArrowLeft, Pause, Play, Settings } from 'lucide-react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
-import { Audio, type AVPlaybackStatus } from 'expo-av';
+import { createAudioPlayer, setAudioModeAsync, type AudioPlayer } from 'expo-audio';
 import { useConnectivity } from '../providers/ConnectivityProvider';
+import ErrorBoundary from '../ui/ErrorBoundary';
 
 type Content = {
   id: string;
@@ -44,14 +45,14 @@ export default function ContentPlayerScreen({ navigation, route }: any) {
   const [isSeeking, setIsSeeking] = useState(false);
   const [seekProgress, setSeekProgress] = useState(0);
   const [trackWidth, setTrackWidth] = useState(0);
+  const [mediaError, setMediaError] = useState<string | null>(null);
   
   // Subscription expiry state for testing
   const [isSubscriptionActive, setIsSubscriptionActive] = useState(true);
   const [showDebugToggle, setShowDebugToggle] = useState(__DEV__);
 
-  const soundRef = useRef<Audio.Sound | null>(null);
+  const playerRef = useRef<AudioPlayer | null>(null);
   const progressOpacity = useRef(new Animated.Value(0)).current;
-  const lastStatusRef = useRef<AVPlaybackStatus | null>(null);
 
   const contentId = route?.params?.contentId;
 
@@ -88,72 +89,73 @@ export default function ContentPlayerScreen({ navigation, route }: any) {
 
   useEffect(() => {
     let mounted = true;
+    let intervalId: any = null;
+
     (async () => {
       if (!currentContent) return;
       try {
+        setMediaError(null);
         setIsPlaying(false);
         setPositionMs(0);
         setDurationMs(0);
         progressOpacity.setValue(0);
 
-        if (soundRef.current) {
-          await soundRef.current.unloadAsync();
-          soundRef.current = null;
+        if (playerRef.current) {
+          playerRef.current.remove();
+          playerRef.current = null;
         }
 
-        await Audio.setAudioModeAsync({
-          playsInSilentModeIOS: true,
-          staysActiveInBackground: false,
-          shouldDuckAndroid: true,
-        });
+        try {
+          await setAudioModeAsync({
+            playsInSilentMode: true,
+            shouldPlayInBackground: false,
+            interruptionMode: 'duckOthers',
+          });
+        } catch (e) {
+          if (mounted) setMediaError('Failed to initialize audio mode');
+          return;
+        }
 
         // Future: POST /v1/stream/access to get signed URL before starting the audio.
         const demoUrl = 'https://www.soundhelix.com/examples/mp3/SoundHelix-Song-1.mp3';
 
-        const { sound } = await Audio.Sound.createAsync(
-          { uri: demoUrl },
-          { shouldPlay: false },
-          (status) => {
-            if (!mounted) return;
-            if (!status.isLoaded) return;
-            lastStatusRef.current = status;
-            if (!isSeeking) {
-              if (typeof status.positionMillis === 'number') setPositionMs(status.positionMillis);
-            }
-            if (typeof status.durationMillis === 'number') setDurationMs(status.durationMillis);
-            if (typeof status.isPlaying === 'boolean') setIsPlaying(status.isPlaying);
-          }
-        );
+        let player: AudioPlayer;
+        try {
+          player = createAudioPlayer({ uri: demoUrl }, { updateInterval: 350 });
+          playerRef.current = player;
+        } catch (e) {
+          if (mounted) setMediaError('Failed to load audio');
+          return;
+        }
 
-        soundRef.current = sound;
+        try {
+          player.pause();
+        } catch {
+          // ignore
+        }
+
+        intervalId = setInterval(() => {
+          if (!mounted) return;
+          const p = playerRef.current;
+          if (!p || !p.isLoaded) return;
+          if (!isSeeking) setPositionMs(Math.max(0, Math.round((p.currentTime || 0) * 1000)));
+          setDurationMs(Math.max(0, Math.round((p.duration || 0) * 1000)));
+          setIsPlaying(Boolean(p.playing));
+        }, 350);
       } catch {
-        // ignore
+        if (mounted) setMediaError('Failed to prepare player');
       }
     })();
 
     return () => {
       mounted = false;
-    };
-  }, [currentContent, progressOpacity]);
 
-  useEffect(() => {
-    const id = setInterval(async () => {
-      try {
-        const status = lastStatusRef.current;
-        if (!status || !status.isLoaded) return;
-        if (isSeeking) return;
-        if (typeof status.positionMillis === 'number') setPositionMs(status.positionMillis);
-        if (typeof status.durationMillis === 'number') setDurationMs(status.durationMillis);
-        if (typeof status.isPlaying === 'boolean') setIsPlaying(status.isPlaying);
-      } catch {
-        // ignore
+      if (intervalId) {
+        clearInterval(intervalId);
+        intervalId = null;
       }
-    }, 500);
-
-    return () => {
-      clearInterval(id);
     };
-  }, [isSeeking]);
+  }, [currentContent, progressOpacity, isSeeking]);
 
   useEffect(() => {
     Animated.timing(progressOpacity, {
@@ -170,13 +172,8 @@ export default function ContentPlayerScreen({ navigation, route }: any) {
         if (isPlaying) {
           setWasPlayingBeforeOffline(true);
           try {
-            const sound = soundRef.current;
-            if (sound) {
-              const status = await sound.getStatusAsync();
-              if (status.isLoaded && status.isPlaying) {
-                await sound.pauseAsync();
-              }
-            }
+            const player = playerRef.current;
+            if (player && player.isLoaded && player.playing) player.pause();
           } catch (error) {
             console.error('Error pausing audio:', error);
           }
@@ -193,13 +190,8 @@ export default function ContentPlayerScreen({ navigation, route }: any) {
         // Resume playback when connection is restored
         setWasPlayingBeforeOffline(false);
         try {
-          const sound = soundRef.current;
-          if (sound) {
-            const status = await sound.getStatusAsync();
-            if (status.isLoaded && !status.isPlaying) {
-              await sound.playAsync();
-            }
-          }
+          const player = playerRef.current;
+          if (player && player.isLoaded && !player.playing) player.play();
         } catch (error) {
           console.error('Error resuming audio:', error);
         }
@@ -213,9 +205,9 @@ export default function ContentPlayerScreen({ navigation, route }: any) {
     return () => {
       (async () => {
         try {
-          if (soundRef.current) {
-            await soundRef.current.unloadAsync();
-            soundRef.current = null;
+          if (playerRef.current) {
+            playerRef.current.remove();
+            playerRef.current = null;
           }
         } catch {
           // ignore
@@ -226,9 +218,9 @@ export default function ContentPlayerScreen({ navigation, route }: any) {
 
   const onBack = async () => {
     try {
-      if (soundRef.current) {
-        await soundRef.current.unloadAsync();
-        soundRef.current = null;
+      if (playerRef.current) {
+        playerRef.current.remove();
+        playerRef.current = null;
       }
     } finally {
       navigation.goBack();
@@ -237,6 +229,7 @@ export default function ContentPlayerScreen({ navigation, route }: any) {
 
   const handlePlayPress = async () => {
     if (!currentContent) return;
+    if (mediaError) return;
 
     // Check subscription status before playing
     if (!isSubscriptionActive) {
@@ -260,22 +253,22 @@ export default function ContentPlayerScreen({ navigation, route }: any) {
       return;
     }
 
-    // Future: POST /v1/stream/access to get signed URL before starting the audio.
-    // Then use expo-audio (or expo-av) to play the signedUrl.
-
     try {
-      const sound = soundRef.current;
-      if (!sound) return;
-      const status = await sound.getStatusAsync();
-      if (!status.isLoaded) return;
-      if (status.isPlaying) {
-        await sound.pauseAsync();
+      const player = playerRef.current;
+      if (!player || !player.isLoaded) return;
+      if (player.playing) {
+        player.pause();
       } else {
-        await sound.playAsync();
+        player.play();
       }
     } catch {
-      setIsPlaying(false);
+      setMediaError('Playback failed');
     }
+  };
+
+  const retryMedia = () => {
+    setMediaError(null);
+    setCurrentContent((c) => (c ? { ...c } : c));
   };
 
   const formatTime = (ms: number) => {
@@ -290,17 +283,14 @@ export default function ContentPlayerScreen({ navigation, route }: any) {
   const remainingMs = Math.max(0, durationMs - positionMs);
 
   const seekToProgress = async (nextProgress: number) => {
-    const sound = soundRef.current;
-    if (!sound) return;
+    const player = playerRef.current;
+    if (!player || !player.isLoaded) return;
 
-    const status = await sound.getStatusAsync();
-    if (!status.isLoaded) return;
+    const nextDurationMs = Math.max(0, Math.round((player.duration || 0) * 1000));
+    if (!nextDurationMs || nextDurationMs <= 0) return;
 
-    const nextDuration = typeof status.durationMillis === 'number' ? status.durationMillis : durationMs;
-    if (!nextDuration || nextDuration <= 0) return;
-
-    const nextMs = Math.max(0, Math.min(nextDuration, Math.round(nextProgress * nextDuration)));
-    await sound.setPositionAsync(nextMs);
+    const nextMs = Math.max(0, Math.min(nextDurationMs, Math.round(nextProgress * nextDurationMs)));
+    await player.seekTo(nextMs / 1000);
     setPositionMs(nextMs);
   };
 
@@ -351,26 +341,54 @@ export default function ContentPlayerScreen({ navigation, route }: any) {
     );
   }
 
-  return (
-    <SafeAreaView style={styles.container} edges={['top']}>
-      <View style={styles.container}>
-        {/* Debug Toggle */}
-        {showDebugToggle && (
-          <View style={styles.debugToggle}>
-            <TouchableOpacity
-              style={[
-                styles.debugButton,
-                !isSubscriptionActive && styles.debugButtonActive
-              ]}
-              onPress={() => setIsSubscriptionActive(!isSubscriptionActive)}
+  if (mediaError) {
+    return (
+      <ErrorBoundary label="Media Player">
+        <SafeAreaView style={styles.container} edges={['top']}>
+          <View style={[styles.loading, { backgroundColor: '#4b1927' }]}>
+            <Text style={{ color: '#e6d6d2', fontSize: 16, fontWeight: '600' }}>Something went wrong</Text>
+            <Text style={{ color: '#d8c7c3', fontSize: 13, marginTop: 6 }}>{mediaError}</Text>
+            <Pressable
+              onPress={retryMedia}
+              style={{
+                marginTop: 14,
+                borderRadius: 12,
+                paddingVertical: 10,
+                paddingHorizontal: 14,
+                borderWidth: 1,
+                borderColor: 'rgba(255,255,255,0.18)',
+                backgroundColor: 'rgba(255,255,255,0.08)',
+              }}
             >
-              <Settings size={16} color="#fff" />
-              <Text style={styles.debugButtonText}>
-                Sub: {isSubscriptionActive ? 'Active' : 'Expired'}
-              </Text>
-            </TouchableOpacity>
+              <Text style={{ color: '#ffffff', fontSize: 13, fontWeight: '600' }}>Retry</Text>
+            </Pressable>
           </View>
-        )}
+        </SafeAreaView>
+      </ErrorBoundary>
+    );
+  }
+
+  return (
+    <ErrorBoundary label="Media Player">
+      <SafeAreaView style={styles.container} edges={['top']}>
+        <View style={styles.container}>
+          {/* Debug Toggle */}
+          {showDebugToggle && (
+            <View style={styles.debugToggle}>
+              <TouchableOpacity
+                style={[
+                  styles.debugButton,
+                  !isSubscriptionActive && styles.debugButtonActive
+                ]}
+                onPress={() => setIsSubscriptionActive(!isSubscriptionActive)}
+              >
+                <Settings size={16} color="#fff" />
+                <Text style={styles.debugButtonText}>
+                  Sub: {isSubscriptionActive ? 'Active' : 'Expired'}
+                </Text>
+              </TouchableOpacity>
+            </View>
+          )}
 
         <Image source={{ uri: currentContent.thumbnail }} style={styles.bgImg} blurRadius={32} />
         <LinearGradient
@@ -453,7 +471,8 @@ export default function ContentPlayerScreen({ navigation, route }: any) {
           </View>
         </View>
       </View>
-    </SafeAreaView>
+      </SafeAreaView>
+    </ErrorBoundary>
   );
 }
 

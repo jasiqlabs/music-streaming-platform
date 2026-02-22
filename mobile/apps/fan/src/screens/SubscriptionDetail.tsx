@@ -13,6 +13,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { useBottomTabBarHeight } from '@react-navigation/bottom-tabs';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { ArrowLeft, BadgeCheck, Pause, Play } from 'lucide-react-native';
+import ErrorBoundary from '../ui/ErrorBoundary';
 
 type SubDetail = {
   artistId: string;
@@ -88,67 +89,65 @@ export default function SubscriptionDetail({ navigation, route }: any) {
   if (!detail) return <View style={styles.container} />;
 
   return (
-    <SafeAreaView style={styles.container} edges={['top']}>
-      <View style={styles.headerRow}>
-        <Pressable onPress={() => navigation.goBack()} style={styles.backBtn}>
-          <ArrowLeft color="#fff" size={22} />
-        </Pressable>
-        <Text style={styles.headerTitle}>Subscription Detail</Text>
-        <View style={{ width: 36 }} />
-      </View>
-
-      <View style={styles.bannerWrap}>
-        <Image source={{ uri: detail.banner }} style={styles.bannerImg} />
-        <LinearGradient
-          colors={['rgba(0,0,0,0.05)', 'rgba(0,0,0,0.92)']}
-          style={styles.bannerGrad}
-        />
-
-        <View style={styles.bannerText}>
-          <View style={styles.nameRow}>
-            <Text style={styles.artistName}>{detail.name}</Text>
-            {detail.verified ? (
-              <View style={styles.verifiedWrap}>
-                <BadgeCheck color="#4AA3FF" fill="#4AA3FF" size={18} />
-              </View>
-            ) : null}
-          </View>
-          <Text style={styles.labelText}>{detail.label}</Text>
-        </View>
-      </View>
-
-      <View style={styles.cardOuter}>
-        <BlurView intensity={26} tint="dark" style={styles.card}>
-          <View style={styles.row}
-          >
-            <Text style={styles.leftLabel}>Status</Text>
-            <View style={styles.statusRight}>
-              <View style={styles.greenDot} />
-              <Text style={styles.rightValue}>{detail.status}</Text>
-            </View>
-          </View>
-
-          <View style={styles.divider} />
-
-          <View style={styles.row}>
-            <Text style={styles.leftLabel}>Renews</Text>
-            <Text style={styles.rightValue}>{detail.renewDate}</Text>
-          </View>
-
-          <Pressable style={styles.cancelBtn} onPress={() => setCancelOpen(true)}>
-            <LinearGradient
-              colors={['rgba(255,122,24,0.28)', 'rgba(255,122,24,0.12)']}
-              style={styles.cancelBtnInner}
-            >
-              <Text style={styles.cancelBtnText}>Cancel Subscription</Text>
-            </LinearGradient>
+    <ErrorBoundary label="Payments: Subscription Detail">
+      <SafeAreaView style={styles.container} edges={['top']}>
+        <View style={styles.headerRow}>
+          <Pressable onPress={() => navigation.goBack()} style={styles.backBtn}>
+            <ArrowLeft color="#fff" size={22} />
           </Pressable>
-        </BlurView>
+          <Text style={styles.headerTitle}>Subscription Detail</Text>
+          <View style={{ width: 36 }} />
+        </View>
 
-        <Pressable onPress={() => {}} style={styles.supportRow}>
-          <Text style={styles.supportText}>Need help?  Contact Support  &gt;</Text>
-        </Pressable>
-      </View>
+        <View style={styles.bannerWrap}>
+          <Image source={{ uri: detail.banner }} style={styles.bannerImg} />
+          <LinearGradient
+            colors={['rgba(0,0,0,0.05)', 'rgba(0,0,0,0.92)']}
+            style={styles.bannerGrad}
+          />
+
+          <View style={styles.bannerText}>
+            <View style={styles.nameRow}>
+              <Text style={styles.artistName}>{detail.name}</Text>
+              {detail.verified ? (
+                <View style={styles.verifiedWrap}>
+                  <BadgeCheck color="#4AA3FF" fill="#4AA3FF" size={18} />
+                </View>
+              ) : null}
+            </View>
+            <Text style={styles.labelText}>{detail.label}</Text>
+          </View>
+        </View>
+
+        <View style={styles.cardOuter}>
+          <BlurView intensity={22} tint="dark" style={styles.card}>
+            <View style={styles.row}>
+              <Text style={styles.leftLabel}>Status</Text>
+              <View style={styles.statusRight}>
+                <View style={styles.greenDot} />
+                <Text style={styles.rightValue}>{detail.status}</Text>
+              </View>
+            </View>
+            <View style={styles.divider} />
+            <View style={styles.row}>
+              <Text style={styles.leftLabel}>Renews</Text>
+              <Text style={styles.rightValue}>{detail.renewDate}</Text>
+            </View>
+
+            <Pressable style={styles.cancelBtn} onPress={() => setCancelOpen(true)}>
+              <LinearGradient
+                colors={['rgba(255,122,24,0.28)', 'rgba(255,122,24,0.12)']}
+                style={styles.cancelBtnInner}
+              >
+                <Text style={styles.cancelBtnText}>Cancel Subscription</Text>
+              </LinearGradient>
+            </Pressable>
+          </BlurView>
+
+          <Pressable onPress={() => {}} style={styles.supportRow}>
+            <Text style={styles.supportText}>Need help?  Contact Support  &gt;</Text>
+          </Pressable>
+        </View>
 
       <Modal
         visible={cancelOpen}
@@ -201,7 +200,8 @@ export default function SubscriptionDetail({ navigation, route }: any) {
           </Pressable>
         </BlurView>
       </View>
-    </SafeAreaView>
+      </SafeAreaView>
+    </ErrorBoundary>
   );
 }
 

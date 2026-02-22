@@ -13,6 +13,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { useBottomTabBarHeight } from '@react-navigation/bottom-tabs';
 import { ArrowLeft, Lock, Pause, Play } from 'lucide-react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import ErrorBoundary from '../ui/ErrorBoundary';
 
 type Song = {
   id: string;
@@ -44,7 +45,8 @@ export default function ArtistSubscriptionScreen({ navigation, route }: any) {
   if (!songData) return <View style={styles.container}><ActivityIndicator color="#fff" /></View>;
 
   return (
-    <SafeAreaView style={styles.container} edges={['top']}>
+    <ErrorBoundary label="Payments: Artist Subscription">
+      <SafeAreaView style={styles.container} edges={['top']}>
       {/* Background Hero */}
       <View style={styles.heroWrap}>
         <Image source={{ uri: songData.thumbnail }} style={styles.heroImg} />
@@ -119,7 +121,8 @@ export default function ArtistSubscriptionScreen({ navigation, route }: any) {
           </Pressable>
         </BlurView>
       </View>
-    </SafeAreaView>
+      </SafeAreaView>
+    </ErrorBoundary>
   );
 }
 

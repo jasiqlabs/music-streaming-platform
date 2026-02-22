@@ -16,6 +16,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useBottomTabBarHeight } from '@react-navigation/bottom-tabs';
 import { BadgeCheck, Lock, Pause, Play, Search, SkipForward } from 'lucide-react-native';
+import { apiV1 } from '../services/api';
 
 const { width } = Dimensions.get('window');
 
@@ -35,6 +36,22 @@ type ContentCard = {
   description: string;
   thumbnail: string;
   isLocked: boolean;
+};
+
+type ApiContentItem = {
+  id: string | number;
+  title?: string;
+  type?: string;
+  artwork?: string | null;
+  locked?: boolean;
+  artistName?: string | null;
+  isVerified?: boolean;
+  verified?: boolean;
+  artist?: {
+    name?: string | null;
+    isVerified?: boolean;
+    verified?: boolean;
+  } | null;
 };
 
 export default function HomeScreen({ navigation }: any) {
@@ -112,42 +129,27 @@ export default function HomeScreen({ navigation }: any) {
           },
         ];
 
-        const mockRecently: ContentCard[] = [
-          {
-            id: 'secret-melody',
-            title: 'Secret Melody',
-            artist: 'Luna Ray',
-            description:
-              'Experience a serene and mystical journey with\n the soothing melodies of Luna Ray.',
-            thumbnail:
-              'https://images.unsplash.com/photo-1464863979621-258859e62245?auto=format&fit=crop&w=1400&q=80',
-            isLocked: true,
-          },
-          {
-            id: 'midnight-dreams',
-            title: 'Midnight Dreams',
-            artist: 'Luna Ray',
-            description: 'A premium late-night vibe with warm synths.',
-            thumbnail:
-              'https://images.unsplash.com/photo-1470225620780-dba8ba36b745?auto=format&fit=crop&w=1200&q=80',
-            isLocked: false,
-          },
-          {
-            id: 'golden-skies',
-            title: 'Golden Skies',
-            artist: 'David Stone',
-            description: 'Cinematic build-ups and bright textures.',
-            thumbnail:
-              'https://images.unsplash.com/photo-1511379938547-c1f69419868d?auto=format&fit=crop&w=1200&q=80',
-            isLocked: false,
-          },
-        ];
+        let recentFromApi: ContentCard[] = [];
+        try {
+          const res = await apiV1.get('/content');
+          const apiItems: ApiContentItem[] = Array.isArray(res.data?.items) ? res.data.items : [];
+          recentFromApi = apiItems.map((it) => ({
+            id: String(it.id),
+            title: it.title ?? 'Untitled',
+            artist: String(it.artistName ?? it.artist?.name ?? 'Artist'),
+            description: (it.type || '').toString(),
+            thumbnail: it.artwork || 'https://images.unsplash.com/photo-1464863979621-258859e62245?auto=format&fit=crop&w=1400&q=80',
+            isLocked: Boolean(it.locked),
+          }));
+        } catch {
+          recentFromApi = [];
+        }
 
         if (!mounted) return;
         setFeaturedArtists(mockFeatured);
         setTrendingArtists(mockTrending);
-        setRecentlyAdded(mockRecently);
-        setCurrentSong(mockRecently[0]);
+        setRecentlyAdded(recentFromApi);
+        setCurrentSong(recentFromApi[0] || null);
       } finally {
         if (mounted) setLoading(false);
       }

@@ -13,6 +13,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useBottomTabBarHeight } from '@react-navigation/bottom-tabs';
 import { BadgeCheck, Check, Pause, Play } from 'lucide-react-native';
+import ErrorBoundary from '../ui/ErrorBoundary';
 
 type PaymentStep = 'OFFER' | 'PROCESSING' | 'SUCCESS';
 
@@ -63,104 +64,106 @@ export default function SubscriptionFlowScreen({ navigation, route }: any) {
   };
 
   return (
-    <SafeAreaView style={styles.container}>
-      <ImageBackground source={{ uri: bgUri }} style={styles.bg} resizeMode="cover">
-        <LinearGradient
-          colors={['rgba(0,0,0,0.10)', 'rgba(0,0,0,0.70)', 'rgba(0,0,0,0.92)']}
-          style={[StyleSheet.absoluteFill, { zIndex: 0 }]}
-          pointerEvents="none"
-        />
+    <ErrorBoundary label="Payments: Subscription Flow">
+      <SafeAreaView style={styles.container}>
+        <ImageBackground source={{ uri: bgUri }} style={styles.bg} resizeMode="cover">
+          <LinearGradient
+            colors={['rgba(0,0,0,0.10)', 'rgba(0,0,0,0.70)', 'rgba(0,0,0,0.92)']}
+            style={[StyleSheet.absoluteFill, { zIndex: 0 }]}
+            pointerEvents="none"
+          />
 
-        {paymentStep === 'OFFER' ? (
-          <View style={styles.offerWrap} pointerEvents="auto">
-            <View style={styles.artistRow}>
-              <Text style={styles.artistName}>{artistName}</Text>
-              <View style={styles.verifiedWrap}>
-                <BadgeCheck color="#4AA3FF" fill="#4AA3FF" size={18} />
+          {paymentStep === 'OFFER' ? (
+            <View style={styles.offerWrap} pointerEvents="auto">
+              <View style={styles.artistRow}>
+                <Text style={styles.artistName}>{artistName}</Text>
+                <View style={styles.verifiedWrap}>
+                  <BadgeCheck color="#4AA3FF" fill="#4AA3FF" size={18} />
+                </View>
               </View>
+
+              <BlurView intensity={22} tint="dark" style={styles.glassCard}>
+                <View style={styles.priceWrap}>
+                  <Text style={styles.priceText}>$4.99</Text>
+                  <Text style={styles.priceUnit}>/month</Text>
+                </View>
+
+                <View style={styles.benefitsWrap}>
+                  <View style={styles.benefitRow}>
+                    <Text style={styles.checkMark}>✓</Text>
+                    <Text style={styles.benefitText}>Early access to new music</Text>
+                  </View>
+                  <View style={styles.benefitRow}>
+                    <Text style={styles.checkMark}>✓</Text>
+                    <Text style={styles.benefitText}>Support {artistName} directly</Text>
+                  </View>
+                </View>
+
+                <Pressable style={styles.primaryBtn} onPress={onSubscribePress}>
+                  <LinearGradient
+                    colors={['rgba(255,122,24,0.45)', 'rgba(255,122,24,0.20)']}
+                    style={styles.primaryBtnInner}
+                  >
+                    <Text style={styles.primaryBtnText}>Subscribe</Text>
+                  </LinearGradient>
+                </Pressable>
+              </BlurView>
             </View>
+          ) : null}
 
-            <BlurView intensity={22} tint="dark" style={styles.glassCard}>
-              <View style={styles.priceWrap}>
-                <Text style={styles.priceText}>$4.99</Text>
-                <Text style={styles.priceUnit}>/month</Text>
+          {paymentStep === 'PROCESSING' ? (
+            <View style={styles.processingWrap} pointerEvents="auto">
+              <View style={styles.spinnerWrap}>
+                <ActivityIndicator size="large" color="#FF7A18" />
               </View>
+              <Text style={styles.processingText}>Payment received, confirming...</Text>
+            </View>
+          ) : null}
 
-              <View style={styles.benefitsWrap}>
-                <View style={styles.benefitRow}>
-                  <Text style={styles.checkMark}>✓</Text>
-                  <Text style={styles.benefitText}>Early access to new music</Text>
-                </View>
-                <View style={styles.benefitRow}>
-                  <Text style={styles.checkMark}>✓</Text>
-                  <Text style={styles.benefitText}>Support {artistName} directly</Text>
-                </View>
+          {paymentStep === 'SUCCESS' ? (
+            <View style={styles.successWrap} pointerEvents="auto">
+              <View style={styles.successIconWrap}>
+                <Check color="#FF7A18" size={30} strokeWidth={3} />
               </View>
+              <Text style={styles.successText}>You now have early access</Text>
 
-              <Pressable style={styles.primaryBtn} onPress={onSubscribePress}>
+              <Pressable style={styles.primaryBtnWide} onPress={onStartListening}>
                 <LinearGradient
                   colors={['rgba(255,122,24,0.45)', 'rgba(255,122,24,0.20)']}
                   style={styles.primaryBtnInner}
                 >
-                  <Text style={styles.primaryBtnText}>Subscribe</Text>
+                  <Text style={styles.primaryBtnText}>Start Listening</Text>
                 </LinearGradient>
               </Pressable>
-            </BlurView>
-          </View>
-        ) : null}
-
-        {paymentStep === 'PROCESSING' ? (
-          <View style={styles.processingWrap} pointerEvents="auto">
-            <View style={styles.spinnerWrap}>
-              <ActivityIndicator size="large" color="#FF7A18" />
             </View>
-            <Text style={styles.processingText}>Payment received, confirming...</Text>
-          </View>
-        ) : null}
+          ) : null}
 
-        {paymentStep === 'SUCCESS' ? (
-          <View style={styles.successWrap} pointerEvents="auto">
-            <View style={styles.successIconWrap}>
-              <Check color="#FF7A18" size={30} strokeWidth={3} />
-            </View>
-            <Text style={styles.successText}>You now have early access</Text>
-
-            <Pressable style={styles.primaryBtnWide} onPress={onStartListening}>
-              <LinearGradient
-                colors={['rgba(255,122,24,0.45)', 'rgba(255,122,24,0.20)']}
-                style={styles.primaryBtnInner}
-              >
-                <Text style={styles.primaryBtnText}>Start Listening</Text>
-              </LinearGradient>
-            </Pressable>
-          </View>
-        ) : null}
-
-        {paymentStep !== 'PROCESSING' ? (
-          <View style={[styles.miniPlayer, { bottom: tabBarHeight + 12 }]}>
-            <View style={{ flex: 1 }}>
-              <Text style={styles.miniTitle} numberOfLines={1}>
-                Secret Melody
-              </Text>
-              <Text style={styles.miniSub} numberOfLines={1}>
-                {artistName}
-              </Text>
-              <View style={styles.progressTrack}>
-                <View style={[styles.progressFill, { width: `${miniProgress * 100}%` }]} />
+          {paymentStep !== 'PROCESSING' ? (
+            <View style={[styles.miniPlayer, { bottom: tabBarHeight + 12 }]}>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.miniTitle} numberOfLines={1}>
+                  Secret Melody
+                </Text>
+                <Text style={styles.miniSub} numberOfLines={1}>
+                  {artistName}
+                </Text>
+                <View style={styles.progressTrack}>
+                  <View style={[styles.progressFill, { width: `${miniProgress * 100}%` }]} />
+                </View>
               </View>
-            </View>
 
-            <Pressable style={styles.miniControl} onPress={() => setMiniIsPlaying((v) => !v)}>
-              {miniIsPlaying ? (
-                <Pause color="#fff" size={22} />
-              ) : (
-                <Play color="#fff" size={22} />
-              )}
-            </Pressable>
-          </View>
-        ) : null}
-      </ImageBackground>
-    </SafeAreaView>
+              <Pressable style={styles.miniControl} onPress={() => setMiniIsPlaying((v) => !v)}>
+                {miniIsPlaying ? (
+                  <Pause color="#fff" size={22} />
+                ) : (
+                  <Play color="#fff" size={22} />
+                )}
+              </Pressable>
+            </View>
+          ) : null}
+        </ImageBackground>
+      </SafeAreaView>
+    </ErrorBoundary>
   );
 }
 
