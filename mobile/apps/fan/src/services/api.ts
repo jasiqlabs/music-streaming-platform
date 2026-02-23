@@ -1,7 +1,7 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import axios, { AxiosHeaders } from 'axios';
 
-const HOST_BASE_URL = 'http://192.168.31.184:8000';
+const HOST_BASE_URL = process.env.EXPO_PUBLIC_API_URL || 'http://192.168.31.184:8000';
 const API_BASE_URL = `${HOST_BASE_URL}/api/v1/fan`;
 export const JWT_STORAGE_KEY = 'jwt';
 
