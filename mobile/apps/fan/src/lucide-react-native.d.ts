@@ -1,0 +1,45 @@
+declare module 'lucide-react-native' {
+  import * as React from 'react';
+
+  export interface LucideProps {
+    color?: string;
+    fill?: string;
+    size?: number;
+    strokeWidth?: number;
+    absoluteStrokeWidth?: boolean;
+    style?: any;
+  }
+
+  export type LucideIcon = React.FC<LucideProps>;
+
+  export const WifiOff: LucideIcon;
+  export const RefreshCw: LucideIcon;
+
+  export const Home: LucideIcon;
+  export const Library: LucideIcon;
+  export const Search: LucideIcon;
+  export const User: LucideIcon;
+
+  export const CreditCard: LucideIcon;
+  export const HelpCircle: LucideIcon;
+  export const LogOut: LucideIcon;
+  export const Lock: LucideIcon;
+  export const ShieldX: LucideIcon;
+  export const Mail: LucideIcon;
+
+  export const ArrowLeft: LucideIcon;
+  export const BadgeCheck: LucideIcon;
+  export const Pause: LucideIcon;
+  export const Play: LucideIcon;
+  export const Settings: LucideIcon;
+  export const SkipForward: LucideIcon;
+
+  export const AlertTriangle: LucideIcon;
+  export const Crown: LucideIcon;
+
+  export const Eye: LucideIcon;
+  export const EyeOff: LucideIcon;
+
+  export const X: LucideIcon;
+  export const Check: LucideIcon;
+}

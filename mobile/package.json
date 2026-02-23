@@ -42,6 +42,7 @@
     "react-native-web": "^0.21.0"
   },
   "devDependencies": {
+    "@expo/webpack-config": "^19.0.1",
     "typescript": "~5.9.2"
   }
 }
