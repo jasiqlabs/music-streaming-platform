@@ -3,6 +3,15 @@
     "name": "FanApp",
     "slug": "fan-app",
     "version": "1.0.0",
+    "platforms": [
+      "ios",
+      "android",
+      "web"
+    ],
+    "web": {
+      "bundler": "metro",
+      "output": "static"
+    },
     "splash": {
       "resizeMode": "contain",
       "backgroundColor": "#000000"
