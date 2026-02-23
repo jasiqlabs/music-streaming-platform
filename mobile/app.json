@@ -10,7 +10,7 @@
     ],
     "web": {
       "bundler": "metro",
-      "output": "static"
+      "output": "single"
     },
     "splash": {
       "resizeMode": "contain",
