@@ -1,38 +1,12 @@
 
-import AsyncStorage from '@react-native-async-storage/async-storage';
-import { NativeStackScreenProps } from '@react-navigation/native-stack';
-import React, { useEffect } from 'react';
+import React from 'react';
 import { Image, StyleSheet, View, Dimensions } from 'react-native';
 import { Shadow } from 'react-native-shadow-2';
 import { LinearGradient } from 'expo-linear-gradient'; // Ensure this is installed
 
-import { JWT_STORAGE_KEY } from '../services/api';
-import type { RootStackParamList } from '../navigation/types';
-
 const { width } = Dimensions.get('window');
 
-type Props = NativeStackScreenProps<RootStackParamList, 'Splash'>;
-
-export default function SplashScreen({ navigation }: Props) {
-  useEffect(() => {
-    const timer = setTimeout(async () => {
-      try {
-        const token = await AsyncStorage.getItem(JWT_STORAGE_KEY);
-        navigation.reset({
-          index: 0,
-          routes: [{ name: token ? 'MainTabs' : 'Login' }],
-        });
-      } catch {
-        navigation.reset({
-          index: 0,
-          routes: [{ name: 'Login' }],
-        });
-      }
-    }, 2000);
-
-    return () => clearTimeout(timer);
-  }, [navigation]);
-
+export default function SplashScreen() {
   return (
     <View style={styles.container}>
       {/* Cinematic Background Gradient */}

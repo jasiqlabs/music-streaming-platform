@@ -262,11 +262,7 @@ export default function HomeScreen({ navigation }: any) {
         <View style={styles.header}>
           <Text style={styles.headerTitle}>Discover</Text>
 
-          <Pressable
-            onPress={() =>
-              navigation.getParent()?.navigate('Search')
-            }
-          >
+          <Pressable onPress={() => navigation.getParent()?.navigate('SearchTab')}>
             <Search color="#fff" size={22} />
           </Pressable>
         </View>

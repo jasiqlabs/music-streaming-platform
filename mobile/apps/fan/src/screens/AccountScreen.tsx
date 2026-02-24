@@ -2,6 +2,7 @@ import React from 'react';
 import {
   Alert,
   Modal,
+  Platform,
   ScrollView,
   StyleSheet,
   Switch,
@@ -10,10 +11,14 @@ import {
   TouchableOpacity,
   View,
 } from 'react-native';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { CommonActions, useNavigation } from '@react-navigation/native';
 import { useAuth } from '../store/authStore';
 import { CreditCard, HelpCircle, LogOut, User } from 'lucide-react-native';
 import { userService, type AudioQualityPref, type Transaction } from '../services/userService';
+import { JWT_STORAGE_KEY } from '../services/api';
+import { resetToLogin } from '../navigation/rootNavigation';
 
 function PremiumBadge() {
   return (
@@ -25,6 +30,34 @@ function PremiumBadge() {
 
 export default function AccountScreen() {
   const { user, userAccountStatus, logout } = useAuth();
+  const navigation = useNavigation<any>();
+
+  const performLogout = React.useCallback(async () => {
+    console.log('DEBUG: Logout initiated');
+
+    try {
+      console.log('DEBUG: Attempting to clear AsyncStorage...');
+      await AsyncStorage.multiRemove(['userToken', 'userInfo']);
+      await AsyncStorage.multiRemove([JWT_STORAGE_KEY, 'sessionUser']);
+      console.log('DEBUG: AsyncStorage cleared successfully');
+
+      await logout();
+      console.log('DEBUG: Global state updated, triggering redirect...');
+
+      resetToLogin();
+
+      navigation.dispatch(
+        CommonActions.reset({
+          index: 0,
+          routes: [{ name: 'Login' }],
+        })
+      );
+      console.log('DEBUG: Navigation reset command sent');
+    } catch (error: any) {
+      console.error('DEBUG_ERROR: Logout failed during execution:', error);
+      Alert.alert('Logout Error', 'Logout Error: ' + (error?.message ?? String(error)));
+    }
+  }, [logout, navigation]);
 
   const [isLoading, setIsLoading] = React.useState(true);
   const [profileName, setProfileName] = React.useState<string>('');
@@ -69,12 +102,31 @@ export default function AccountScreen() {
   }, [refresh]);
 
   const handleLogout = () => {
+    console.log('LOGOUT_CLICKED');
+
+    if (Platform.OS === 'web') {
+      const confirmed =
+        typeof window !== 'undefined'
+          ? window.confirm('Are you sure you want to log out?')
+          : true;
+      if (confirmed) {
+        void performLogout();
+      }
+      return;
+    }
+
     Alert.alert(
       'Log Out',
       'Are you sure you want to log out?',
       [
         { text: 'Cancel', style: 'cancel' },
-        { text: 'Log Out', style: 'destructive', onPress: logout },
+        {
+          text: 'Log Out',
+          style: 'destructive',
+          onPress: () => {
+            void performLogout();
+          },
+        },
       ]
     );
   };

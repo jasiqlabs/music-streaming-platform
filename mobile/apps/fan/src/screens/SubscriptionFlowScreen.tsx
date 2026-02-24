@@ -60,7 +60,7 @@ export default function SubscriptionFlowScreen({ navigation, route }: any) {
   };
 
   const onStartListening = () => {
-    navigation.navigate('ArtistScreen', { artistId, unlocked: true, contentId });
+    navigation.navigate('Artist', { artistId, unlocked: true, contentId });
   };
 
   return (
@@ -69,12 +69,11 @@ export default function SubscriptionFlowScreen({ navigation, route }: any) {
         <ImageBackground source={{ uri: bgUri }} style={styles.bg} resizeMode="cover">
           <LinearGradient
             colors={['rgba(0,0,0,0.10)', 'rgba(0,0,0,0.70)', 'rgba(0,0,0,0.92)']}
-            style={[StyleSheet.absoluteFill, { zIndex: 0 }]}
-            pointerEvents="none"
+            style={[StyleSheet.absoluteFill, { zIndex: 0, pointerEvents: 'none' }]}
           />
 
           {paymentStep === 'OFFER' ? (
-            <View style={styles.offerWrap} pointerEvents="auto">
+            <View style={styles.offerWrap}>
               <View style={styles.artistRow}>
                 <Text style={styles.artistName}>{artistName}</Text>
                 <View style={styles.verifiedWrap}>
@@ -112,7 +111,7 @@ export default function SubscriptionFlowScreen({ navigation, route }: any) {
           ) : null}
 
           {paymentStep === 'PROCESSING' ? (
-            <View style={styles.processingWrap} pointerEvents="auto">
+            <View style={styles.processingWrap}>
               <View style={styles.spinnerWrap}>
                 <ActivityIndicator size="large" color="#FF7A18" />
               </View>
@@ -121,7 +120,7 @@ export default function SubscriptionFlowScreen({ navigation, route }: any) {
           ) : null}
 
           {paymentStep === 'SUCCESS' ? (
-            <View style={styles.successWrap} pointerEvents="auto">
+            <View style={styles.successWrap}>
               <View style={styles.successIconWrap}>
                 <Check color="#FF7A18" size={30} strokeWidth={3} />
               </View>

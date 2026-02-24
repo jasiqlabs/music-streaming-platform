@@ -4,6 +4,7 @@ import axios, { AxiosHeaders } from 'axios';
 const HOST_BASE_URL = process.env.EXPO_PUBLIC_API_URL || 'http://localhost:8000';
 const API_BASE_URL = `${HOST_BASE_URL}/api/v1/fan`;
 export const JWT_STORAGE_KEY = 'jwt';
+export const USER_TOKEN_STORAGE_KEY = 'userToken';
 
 export const api = axios.create({
   baseURL: API_BASE_URL,
@@ -22,7 +23,9 @@ export const apiV1 = axios.create({
 });
 
 api.interceptors.request.use(async (config) => {
-  const token = await AsyncStorage.getItem(JWT_STORAGE_KEY);
+  const token =
+    (await AsyncStorage.getItem(USER_TOKEN_STORAGE_KEY)) ??
+    (await AsyncStorage.getItem(JWT_STORAGE_KEY));
 
   if (token) {
     const headers =
@@ -38,7 +41,9 @@ api.interceptors.request.use(async (config) => {
 });
 
 apiV1.interceptors.request.use(async (config) => {
-  const token = await AsyncStorage.getItem(JWT_STORAGE_KEY);
+  const token =
+    (await AsyncStorage.getItem(USER_TOKEN_STORAGE_KEY)) ??
+    (await AsyncStorage.getItem(JWT_STORAGE_KEY));
 
   if (token) {
     const headers =

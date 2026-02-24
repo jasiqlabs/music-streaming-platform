@@ -21,7 +21,7 @@ import { useAuth } from '../store/authStore';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'Login'>;
 
-export default function LoginScreen({ navigation }: Partial<Props>) {
+export default function LoginScreen({ navigation }: Props) {
   const { login, isLoggingIn } = useAuth();
 
   const [email, setEmail] = useState('');

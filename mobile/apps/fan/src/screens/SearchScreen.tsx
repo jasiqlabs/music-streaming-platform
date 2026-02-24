@@ -104,8 +104,8 @@ export default function SearchScreen({ navigation }: any) {
   }, [allContent, searchQuery]);
 
   const navigateHomeStack = (screen: string, params?: any) => {
-    navigation.navigate('Home', {
-      screen,
+    navigation.navigate('HomeTab', {
+      screen: screen === 'Home' ? 'HomeIndex' : screen,
       params,
     });
   };

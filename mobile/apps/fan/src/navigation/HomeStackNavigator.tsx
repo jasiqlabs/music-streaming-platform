@@ -11,17 +11,12 @@ import SubscriptionFlowScreen from '../screens/SubscriptionFlowScreen';
 import SeeAllSongsScreen from '../screens/SeeAllSongsScreen';
 
 export type HomeStackParamList = {
-  Home: undefined;
+  HomeIndex: undefined;
   SeeAllSongs: undefined;
   SeeAllTrending: {
     artists?: any[];
   };
   Artist: {
-    artistId?: string;
-    unlocked?: boolean;
-    contentId?: string;
-  };
-  ArtistScreen: {
     artistId?: string;
     unlocked?: boolean;
     contentId?: string;
@@ -53,7 +48,7 @@ const Stack = createNativeStackNavigator<HomeStackParamList>();
 export default function HomeStackNavigator() {
   return (
     <Stack.Navigator id="fan-home" screenOptions={{ headerShown: false }}>
-      <Stack.Screen name="Home" component={HomeScreen} />
+      <Stack.Screen name="HomeIndex" component={HomeScreen} />
       <Stack.Screen
         name="SeeAllSongs"
         component={SeeAllSongsScreen}
@@ -65,7 +60,6 @@ export default function HomeStackNavigator() {
         options={{ headerShown: true, title: 'Trending Artists' }}
       />
       <Stack.Screen name="Artist" component={ArtistScreen} />
-      <Stack.Screen name="ArtistScreen" component={ArtistScreen} />
       <Stack.Screen name="ArtistSubscription" component={ArtistSubscriptionScreen} />
       <Stack.Screen name="ContentPlayer" component={ContentPlayerScreen} />
       <Stack.Screen name="SubscriptionFlow" component={SubscriptionFlowScreen} />

@@ -13,6 +13,7 @@
       "output": "single"
     },
     "splash": {
+      "image": "./logo.jpg",
       "resizeMode": "contain",
       "backgroundColor": "#000000"
     },
@@ -22,6 +23,14 @@
     "plugins": [
       "expo-audio",
       "expo-video"
-    ]
+    ],
+    "extra": {
+      "eas": {
+        "projectId": "8de8855e-a352-4212-971a-0e208d01b4ce"
+      }
+    },
+    "android": {
+      "package": "com.moinimran.fanapp"
+    }
   }
 }

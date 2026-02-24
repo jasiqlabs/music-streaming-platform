@@ -190,7 +190,7 @@ export default function LibraryScreen({ navigation }: any) {
             <Text style={styles.emptySub}>Subscribe to artists you love to fill this space</Text>
             <Pressable
               style={styles.browseBtn}
-              onPress={() => navigation.getParent()?.navigate('Home')}
+              onPress={() => navigation.getParent()?.navigate('HomeTab', { screen: 'HomeIndex' })}
             >
               <LinearGradient
                 colors={['rgba(255,122,24,0.22)', 'rgba(255,122,24,0.12)']}

@@ -11,10 +11,10 @@ import HomeStackNavigator from './HomeStackNavigator';
 import LibraryStackNavigator from './LibraryStackNavigator';
 
 export type MainTabParamList = {
-  Home: undefined;
-  Search: undefined;
-  Library: undefined;
-  Account: undefined;
+  HomeTab: undefined;
+  SearchTab: undefined;
+  LibraryTab: undefined;
+  AccountTab: undefined;
 };
 
 const Tab = createBottomTabNavigator<MainTabParamList>();
@@ -35,18 +35,18 @@ export default function MainTabsNavigator() {
         ),
         tabBarIcon: ({ color, size }) => {
           const iconSize = size ?? 24;
-          if (route.name === 'Home') return <HomeIcon color={color} size={iconSize} />;
-          if (route.name === 'Search') return <Search color={color} size={iconSize} />;
-          if (route.name === 'Library') return <Library color={color} size={iconSize} />;
+          if (route.name === 'HomeTab') return <HomeIcon color={color} size={iconSize} />;
+          if (route.name === 'SearchTab') return <Search color={color} size={iconSize} />;
+          if (route.name === 'LibraryTab') return <Library color={color} size={iconSize} />;
           return <User color={color} size={iconSize} />;
         },
         tabBarItemStyle: styles.tabBarItem,
       })}
     >
-      <Tab.Screen name="Home" component={HomeStackNavigator} />
-      <Tab.Screen name="Search" component={SearchScreen} />
-      <Tab.Screen name="Library" component={LibraryStackNavigator} />
-      <Tab.Screen name="Account" component={AccountScreen} />
+      <Tab.Screen name="HomeTab" component={HomeStackNavigator} options={{ title: 'Home' }} />
+      <Tab.Screen name="SearchTab" component={SearchScreen} options={{ title: 'Search' }} />
+      <Tab.Screen name="LibraryTab" component={LibraryStackNavigator} options={{ title: 'Library' }} />
+      <Tab.Screen name="AccountTab" component={AccountScreen} options={{ title: 'Account' }} />
     </Tab.Navigator>
   );
 }

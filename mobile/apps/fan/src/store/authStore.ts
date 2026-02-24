@@ -1,7 +1,7 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import React, { createContext, useCallback, useContext, useMemo, useState, useEffect } from 'react';
 
-import { api, JWT_STORAGE_KEY } from '../services/api';
+import { api, JWT_STORAGE_KEY, USER_TOKEN_STORAGE_KEY } from '../services/api';
 
 export type SessionUser = {
   id?: string | number;
@@ -19,8 +19,10 @@ type AuthContextValue = {
   user: SessionUser | null;
   isRestoring: boolean;
   isLoggingIn: boolean;
+  isAuthenticated: boolean;
   userAccountStatus: AccountStatus;
   isAccountSuspended: boolean;
+  bootstrapAuth: () => Promise<void>;
   restoreToken: () => Promise<string | null>;
   setToken: (token: string | null) => Promise<void>;
   login: (email: string, password: string) => Promise<void>;
@@ -71,10 +73,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   
   const isAccountSuspended = userAccountStatus === 'SUSPENDED';
 
+  const isAuthenticated = Boolean(token && token.trim().length > 0);
+
   const restoreToken = useCallback(async () => {
     setIsRestoring(true);
     try {
-      const stored = await AsyncStorage.getItem(JWT_STORAGE_KEY);
+      const stored =
+        (await AsyncStorage.getItem(USER_TOKEN_STORAGE_KEY)) ??
+        (await AsyncStorage.getItem(JWT_STORAGE_KEY));
       setTokenState(stored);
       return stored;
     } finally {
@@ -84,8 +90,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const setToken = useCallback(async (next: string | null) => {
     if (next) {
-      await AsyncStorage.setItem(JWT_STORAGE_KEY, next);
+      await AsyncStorage.setItem(USER_TOKEN_STORAGE_KEY, next);
+      await AsyncStorage.removeItem(JWT_STORAGE_KEY);
     } else {
+      await AsyncStorage.removeItem(USER_TOKEN_STORAGE_KEY);
       await AsyncStorage.removeItem(JWT_STORAGE_KEY);
     }
     setTokenState(next);
@@ -114,41 +122,40 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       setTokenState(null);
       setUser(null);
       setUserAccountStatusState('ACTIVE');
+      await AsyncStorage.removeItem(USER_TOKEN_STORAGE_KEY);
       await AsyncStorage.removeItem(JWT_STORAGE_KEY);
       await AsyncStorage.removeItem(SESSION_USER_STORAGE_KEY);
       return null;
     }
   }, []);
 
-  useEffect(() => {
-    const restore = async () => {
-      setIsRestoring(true);
-      try {
-        const stored = await AsyncStorage.getItem(JWT_STORAGE_KEY);
-        const storedUserRaw = await AsyncStorage.getItem(SESSION_USER_STORAGE_KEY);
-        const storedUser = storedUserRaw ? (JSON.parse(storedUserRaw) as SessionUser) : null;
+  const bootstrapAuth = useCallback(async () => {
+    setIsRestoring(true);
+    try {
+      const stored =
+        (await AsyncStorage.getItem(USER_TOKEN_STORAGE_KEY)) ??
+        (await AsyncStorage.getItem(JWT_STORAGE_KEY));
+      const storedUserRaw = await AsyncStorage.getItem(SESSION_USER_STORAGE_KEY);
+      const storedUser = storedUserRaw ? (JSON.parse(storedUserRaw) as SessionUser) : null;
 
-        setTokenState(stored);
-        setUser(storedUser);
-        if (storedUser?.status === 'ACTIVE' || storedUser?.status === 'SUSPENDED') {
-          setUserAccountStatusState(storedUser.status);
-        } else {
-          setUserAccountStatusState('ACTIVE');
-        }
-
-        if (stored) {
-          await fetchSession();
-        }
-      } catch {
-        setTokenState(null);
-        setUser(null);
+      setTokenState(stored);
+      setUser(storedUser);
+      if (storedUser?.status === 'ACTIVE' || storedUser?.status === 'SUSPENDED') {
+        setUserAccountStatusState(storedUser.status);
+      } else {
         setUserAccountStatusState('ACTIVE');
-      } finally {
-        setIsRestoring(false);
       }
-    };
 
-    restore();
+      if (stored) {
+        await fetchSession();
+      }
+    } catch {
+      setTokenState(null);
+      setUser(null);
+      setUserAccountStatusState('ACTIVE');
+    } finally {
+      setIsRestoring(false);
+    }
   }, [fetchSession]);
 
   const login = useCallback(
@@ -203,8 +210,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       user,
       isRestoring,
       isLoggingIn,
+      isAuthenticated,
       userAccountStatus,
       isAccountSuspended,
+      bootstrapAuth,
       restoreToken,
       setToken,
       login,
@@ -216,8 +225,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       user,
       isRestoring,
       isLoggingIn,
+      isAuthenticated,
       userAccountStatus,
       isAccountSuspended,
+      bootstrapAuth,
       restoreToken,
       setToken,
       login,

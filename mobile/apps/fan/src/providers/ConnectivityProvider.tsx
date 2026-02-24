@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
+import React, { createContext, useContext, useState, useEffect, ReactNode, useRef, useCallback } from 'react';
 import NetInfo from '@react-native-community/netinfo';
 import OfflineScreen from '../screens/OfflineScreen';
 
@@ -27,43 +27,54 @@ export const ConnectivityProvider: React.FC<ConnectivityProviderProps> = ({ chil
   const [isInternetReachable, setIsInternetReachable] = useState<boolean>(true);
   const [showOfflineScreen, setShowOfflineScreen] = useState<boolean>(false);
 
-  const updateConnectivityState = (connected: boolean, reachable: boolean) => {
-    console.log('Updating connectivity state:', { connected, reachable });
-    
+  const lastRef = useRef({
+    connected: true,
+    reachable: true,
+    showOffline: false,
+  });
+
+  const applyConnectivity = useCallback((connected: boolean, reachable: boolean) => {
+    const nextShowOffline = !connected;
+    const last = lastRef.current;
+
+    const changed =
+      last.connected !== connected ||
+      last.reachable !== reachable ||
+      last.showOffline !== nextShowOffline;
+
+    if (!changed) return;
+
+    console.log('Network state changed:', { connected, reachable });
+
+    lastRef.current = {
+      connected,
+      reachable,
+      showOffline: nextShowOffline,
+    };
+
     setIsConnected(connected);
     setIsInternetReachable(reachable);
-    
-    // Dismiss offline screen as soon as isConnected is true
-    // Don't wait for isInternetReachable which can be slow/unreliable
-    if (connected) {
-      console.log('Connected - dismissing offline screen immediately');
-      setShowOfflineScreen(false);
-    } else if (!connected || !reachable) {
-      console.log('Not connected - showing offline screen');
-      setShowOfflineScreen(true);
-    }
-  };
+    setShowOfflineScreen(nextShowOffline);
+  }, []);
 
   const checkConnection = async () => {
     try {
       const netInfoState = await NetInfo.fetch();
       const connected = netInfoState.isConnected ?? false;
-      const reachable = netInfoState.isInternetReachable ?? false;
-      
-      console.log('Manual connection check:', { connected, reachable, details: netInfoState });
-      
-      // Use the same prioritized logic
-      if (connected) {
-        console.log('Manual check: Connected - dismissing offline screen immediately');
-        setIsConnected(true);
-        setIsInternetReachable(reachable);
-        setShowOfflineScreen(false);
-      } else {
-        updateConnectivityState(connected, reachable);
-      }
+      const reachable = netInfoState.isInternetReachable;
+
+      // NetInfo often reports isInternetReachable as null/false briefly; don't let it thrash UI.
+      const stableReachable =
+        typeof reachable === 'boolean'
+          ? reachable
+          : connected
+            ? lastRef.current.reachable
+            : false;
+
+      applyConnectivity(connected, stableReachable);
     } catch (error) {
       console.error('Error checking connection:', error);
-      updateConnectivityState(false, false);
+      applyConnectivity(false, false);
     }
   };
 
@@ -74,37 +85,22 @@ export const ConnectivityProvider: React.FC<ConnectivityProviderProps> = ({ chil
     // Subscribe to network state changes
     const unsubscribe = NetInfo.addEventListener(state => {
       const connected = state.isConnected ?? false;
-      const reachable = state.isInternetReachable ?? false;
-      
-      console.log('Network state changed:', { connected, reachable, details: state });
-      
-      // Immediate check: if connected, dismiss offline screen right away
-      if (connected) {
-        console.log('Immediate: Connected detected - dismissing offline screen');
-        setIsConnected(true);
-        setIsInternetReachable(reachable);
-        setShowOfflineScreen(false);
-      } else {
-        updateConnectivityState(connected, reachable);
-      }
+      const reachable = state.isInternetReachable;
+
+      const stableReachable =
+        typeof reachable === 'boolean'
+          ? reachable
+          : connected
+            ? lastRef.current.reachable
+            : false;
+
+      applyConnectivity(connected, stableReachable);
     });
 
     return () => {
       unsubscribe();
     };
   }, []);
-
-  // Force re-render with delay to ensure background navigation state is ready
-  useEffect(() => {
-    if (isConnected && showOfflineScreen) {
-      const timer = setTimeout(() => {
-        console.log('Force dismiss: Ensuring offline screen is hidden after delay');
-        setShowOfflineScreen(false);
-      }, 500);
-      
-      return () => clearTimeout(timer);
-    }
-  }, [isConnected, showOfflineScreen]);
 
   const handleRetry = () => {
     console.log('Retry button pressed');
