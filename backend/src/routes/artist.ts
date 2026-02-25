@@ -2,6 +2,10 @@ import { Router } from "express";
 import bcrypt from "bcrypt";
 import { requireAuth } from "../common/auth/requireAuth";
 import { pool } from "../common/db";
+import { uploadLimiter } from "../common/security/rateLimit";
+import multer from "multer";
+import path from "path";
+import fs from "fs";
 
 const router = Router();
 
@@ -17,6 +21,36 @@ const requireArtist = (req: any, res: any, next: any) => {
 };
 
 const EARLY_ACCESS_DAYS = 7;
+
+const ensureUploadsDir = () => {
+  const dir = path.join(process.cwd(), "public", "uploads");
+  if (!fs.existsSync(dir)) {
+    fs.mkdirSync(dir, { recursive: true });
+  }
+  return dir;
+};
+
+const imageStorage = multer.diskStorage({
+  destination: (_req, _file, cb) => {
+    try {
+      cb(null, ensureUploadsDir());
+    } catch (e: any) {
+      cb(e, ensureUploadsDir());
+    }
+  },
+  filename: (_req, file, cb) => {
+    const ext = path.extname(file.originalname || "");
+    const base = `${Date.now()}-${Math.round(Math.random() * 1e9)}`;
+    cb(null, `${base}${ext}`);
+  }
+});
+
+const uploadImage = multer({
+  storage: imageStorage,
+  limits: {
+    fileSize: 1024 * 1024 * 10
+  }
+});
 
 const ensureArtistSchema = async () => {
   await pool.query("ALTER TABLE users ADD COLUMN IF NOT EXISTS bio TEXT");
@@ -129,6 +163,71 @@ const audit = (req: any, payload: any) => {
     })}`
   );
 };
+
+router.post(
+  "/uploads/image",
+  uploadLimiter,
+  requireAuth,
+  requireArtist,
+  uploadImage.single("image"),
+  async (req: any, res: any) => {
+    const correlationId = req?.correlationId || "-";
+
+    try {
+      await ensureArtistSchema();
+
+      const kindRaw = (req.body?.kind ?? "").toString().trim().toLowerCase();
+      const kind = kindRaw === "banner" ? "banner" : kindRaw === "profile" ? "profile" : "";
+
+      if (!kind) {
+        return res.status(400).json({
+          success: false,
+          message: "kind must be 'profile' or 'banner'",
+          correlationId
+        });
+      }
+
+      const file = req.file as any;
+      if (!file?.filename) {
+        return res.status(400).json({
+          success: false,
+          message: "image file is required",
+          correlationId
+        });
+      }
+
+      const url = `/uploads/${file.filename}`;
+
+      const artistUserId = req.user?.id;
+      const column = kind === "profile" ? "profile_image_url" : "banner_image_url";
+
+      await pool.query(
+        `UPDATE users SET ${column} = $2 WHERE id = $1 AND UPPER(role) = 'ARTIST'`,
+        [artistUserId, url]
+      );
+
+      audit(req, {
+        event: "artist_image_uploaded",
+        outcome: "success",
+        kind,
+        url
+      });
+
+      return res.json({ success: true, url, correlationId });
+    } catch (err: any) {
+      audit(req, {
+        event: "artist_image_uploaded",
+        outcome: "error",
+        message: err?.message || String(err)
+      });
+      return res.status(500).json({
+        success: false,
+        message: "Failed to upload image",
+        correlationId
+      });
+    }
+  }
+);
 
 router.get("/me", requireAuth, requireArtist, async (req: any, res: any) => {
   const correlationId = req?.correlationId || "-";

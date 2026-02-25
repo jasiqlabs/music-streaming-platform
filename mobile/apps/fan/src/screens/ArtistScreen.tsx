@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
   Animated,
+  ActivityIndicator,
   FlatList,
   Image,
   Pressable,
@@ -14,8 +15,11 @@ import { BlurView } from 'expo-blur';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useBottomTabBarHeight } from '@react-navigation/bottom-tabs';
 import { ArrowLeft, BadgeCheck, Lock, Pause, Play, Settings } from 'lucide-react-native';
+import { ResizeMode, Video } from 'expo-av';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import SubscriptionExpiryScreen from './SubscriptionExpiryScreen';
+import { fetchArtistById, fetchArtistMedia, type ArtistDetail, type ArtistMediaItem } from '../services/artistService';
+import { useMediaPlayer } from '../providers/MediaPlayerProvider';
 
 type Song = {
   id: string;
@@ -24,6 +28,8 @@ type Song = {
   duration: string;
   thumbnail: string;
   locked: boolean;
+  mediaType: 'audio' | 'video';
+  mediaUrl: string;
 };
 
 type Artist = {
@@ -32,7 +38,6 @@ type Artist = {
   verified: boolean;
   subscribers: string;
   coverImage: string;
-  songs: Song[];
 };
 
 type TabKey = 'All' | 'Audio' | 'Video';
@@ -42,9 +47,16 @@ const TABS: TabKey[] = ['All', 'Audio', 'Video'];
 export default function ArtistScreen({ navigation, route }: any) {
   const tabBarHeight = useBottomTabBarHeight();
 
+  const { playQueue, currentItem, state: playerState, videoRef, onVideoPlaybackStatusUpdate } = useMediaPlayer();
+
   const [activeTab, setActiveTab] = useState<TabKey>('All');
   const [isPlaying, setIsPlaying] = useState(false);
   const [currentSong, setCurrentSong] = useState<Song | null>(null);
+
+  const [artist, setArtist] = useState<Artist | null>(null);
+  const [songs, setSongs] = useState<Song[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
   
   // Subscription expiry state with debug toggle
   const [isSubscriptionActive, setIsSubscriptionActive] = useState(true);
@@ -55,70 +67,79 @@ export default function ArtistScreen({ navigation, route }: any) {
     setIsSubscriptionActive(true); // Reset after navigation
   };
 
-  const artist: Artist = useMemo(
-    () => ({
-      id: 'luna-ray',
-      name: 'Luna Ray',
-      verified: true,
-      subscribers: '135K Subscribers',
-      coverImage:
-        'https://images.unsplash.com/photo-1464863979621-258859e62245?auto=format&fit=crop&w=1400&q=80',
-      songs: [
-        {
-          id: '1',
-          title: 'Secret Melody',
-          artist: 'Luna Ray',
-          duration: '3:12',
-          thumbnail:
-            'https://images.unsplash.com/photo-1470225620780-dba8ba36b745?auto=format&fit=crop&w=400&q=80',
-          locked: true,
-        },
-        {
-          id: '2',
-          title: 'Midnight Dreams',
-          artist: 'Luna Ray',
-          duration: '2:45',
-          thumbnail:
-            'https://images.unsplash.com/photo-1511379938547-c1f69419868d?auto=format&fit=crop&w=400&q=80',
-          locked: false,
-        },
-        {
-          id: '3',
-          title: 'Golden Skies',
-          artist: 'Luna Ray',
-          duration: '4:05',
-          thumbnail:
-            'https://images.unsplash.com/photo-1477332552946-cfb384aeaf1c?auto=format&fit=crop&w=400&q=80',
-          locked: false,
-        },
-        {
-          id: '4',
-          title: 'Ocean Whispers',
-          artist: 'Luna Ray',
-          duration: '3:33',
-          thumbnail:
-            'https://images.unsplash.com/photo-1496307042754-b4aa456c4a2d?auto=format&fit=crop&w=400&q=80',
-          locked: false,
-        },
-      ],
-    }),
-    []
-  );
+  const artistId = (route?.params?.artistId ?? '').toString();
+
+  useEffect(() => {
+    let mounted = true;
+    (async () => {
+      try {
+        setLoading(true);
+        setError(null);
+
+        const [artistRes, mediaRes] = await Promise.all([
+          fetchArtistById(artistId),
+          fetchArtistMedia(artistId),
+        ]);
+
+        if (!mounted) return;
+
+        const a: ArtistDetail | null = artistRes;
+        if (!a) {
+          setArtist(null);
+          setSongs([]);
+          setError('Artist not found');
+          return;
+        }
+
+        const normalizedArtist: Artist = {
+          id: a.id,
+          name: a.name,
+          verified: a.isVerified,
+          subscribers: a.genre ? a.genre : 'Artist',
+          coverImage: a.coverImageUrl,
+        };
+
+        const toSong = (it: ArtistMediaItem): Song => ({
+          id: it.id,
+          title: it.title,
+          artist: a.name,
+          duration: it.mediaType === 'video' ? 'Video' : 'Audio',
+          thumbnail: it.artworkUrl,
+          locked: it.locked,
+          mediaType: it.mediaType,
+          mediaUrl: it.mediaUrl,
+        });
+
+        setArtist(normalizedArtist);
+        setSongs(mediaRes.map(toSong));
+      } catch {
+        if (!mounted) return;
+        setError('Failed to load artist');
+        setArtist(null);
+        setSongs([]);
+      } finally {
+        if (!mounted) return;
+        setLoading(false);
+      }
+    })();
+
+    return () => {
+      mounted = false;
+    };
+  }, [artistId]);
 
   const isUnlocked = Boolean(route?.params?.unlocked);
 
-  const songs = useMemo(() => {
-    const baseSongs = isUnlocked
-      ? artist.songs.map((s) => ({ ...s, locked: false }))
-      : artist.songs;
-
+  const filteredSongs = useMemo(() => {
+    const baseSongs = isUnlocked ? songs.map((s) => ({ ...s, locked: false })) : songs;
     if (activeTab === 'All') return baseSongs;
-    if (activeTab === 'Audio') return baseSongs;
-    return baseSongs;
-  }, [activeTab, artist.songs, isUnlocked]);
+    if (activeTab === 'Audio') return baseSongs.filter((s) => s.mediaType === 'audio');
+    return baseSongs.filter((s) => s.mediaType === 'video');
+  }, [activeTab, isUnlocked, songs]);
 
   // Disable audio playback when subscription is expired
   const handleSongPress = (song: Song) => {
+    if (!artist) return;
     if (!isSubscriptionActive) {
       return; // Block all playback when subscription is expired
     }
@@ -130,19 +151,33 @@ export default function ArtistScreen({ navigation, route }: any) {
       });
       return;
     }
+    const queue = filteredSongs
+      .filter((s) => Boolean(s.mediaUrl))
+      .map((s) => ({
+        id: s.id,
+        title: s.title,
+        artistName: s.artist,
+        mediaType: s.mediaType,
+        artworkUrl: s.thumbnail,
+        mediaUrl: s.mediaUrl,
+        isLocked: s.locked,
+      }));
+    const idx = queue.findIndex((q) => q.id === song.id);
+    playQueue(queue, idx >= 0 ? idx : 0).catch(() => undefined);
     setCurrentSong(song);
   };
 
   useEffect(() => {
+    if (!artist) return;
     Image.prefetch(artist.coverImage);
-    artist.songs.forEach((s) => {
+    songs.forEach((s) => {
       if (s.thumbnail) Image.prefetch(s.thumbnail);
     });
-  }, [artist]);
+  }, [artist, songs]);
 
   useEffect(() => {
-    if (!currentSong) setCurrentSong(artist.songs[1] ?? artist.songs[0] ?? null);
-  }, [artist.songs, currentSong]);
+    if (!currentSong) setCurrentSong(songs[0] ?? null);
+  }, [songs, currentSong]);
 
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
@@ -166,44 +201,69 @@ export default function ArtistScreen({ navigation, route }: any) {
         )}
 
         {/* Subscription Expiry Guard Screen */}
-        {!isSubscriptionActive && (
-          <SubscriptionExpiryScreen
-            artistName={artist.name}
-            onRenewSubscription={handleRenewSubscription}
-          />
-        )}
-
-        <ArtistHeader
-          coverImage={artist.coverImage}
-          name={artist.name}
-          verified={artist.verified}
-          subscribers={artist.subscribers}
-          onBack={() => navigation.goBack()}
-        />
-
-        <GlassTabs active={activeTab} onChange={setActiveTab} />
-
-        <FlatList
-          data={songs}
-          keyExtractor={(item) => item.id}
-          contentContainerStyle={{ paddingBottom: currentSong ? tabBarHeight + 120 : tabBarHeight + 40 }}
-          renderItem={({ item }) => (
-            <SongRow
-              song={item}
-              onPress={() => handleSongPress(item)}
-            />
-          )}
-          showsVerticalScrollIndicator={false}
-        />
-
-        {currentSong && isSubscriptionActive ? (
-          <MiniPlayerBar
-            bottomInset={tabBarHeight}
-            song={currentSong}
-            isPlaying={isPlaying}
-            onToggle={() => setIsPlaying((p) => !p)}
-          />
+        {!isSubscriptionActive && artist ? (
+          <SubscriptionExpiryScreen artistName={artist.name} onRenewSubscription={handleRenewSubscription} />
         ) : null}
+
+        {loading ? (
+          <View style={styles.loadingWrap}>
+            <ActivityIndicator color="#FF6A00" />
+          </View>
+        ) : error || !artist ? (
+          <View style={styles.loadingWrap}>
+            <Text style={styles.errorText}>{error || 'Unable to load artist.'}</Text>
+          </View>
+        ) : (
+          <>
+            {currentItem?.mediaType === 'video' ? (
+              <View style={styles.youtubeVideoWrap}>
+                <Video
+                  ref={videoRef}
+                  style={styles.youtubeVideo}
+                  source={{ uri: currentItem.mediaUrl }}
+                  shouldPlay={playerState.isPlaying}
+                  useNativeControls
+                  resizeMode={ResizeMode.CONTAIN}
+                  onPlaybackStatusUpdate={onVideoPlaybackStatusUpdate}
+                />
+                <LinearGradient
+                  colors={['rgba(0,0,0,0.55)', 'rgba(0,0,0,0)']}
+                  style={styles.youtubeVideoTopGradient}
+                />
+                <View style={styles.youtubeVideoTopRow}>
+                  <Pressable onPress={() => navigation.goBack()} style={styles.backBtn}>
+                    <ArrowLeft color="#fff" size={22} />
+                  </Pressable>
+                </View>
+              </View>
+            ) : (
+              <ArtistHeader
+                coverImage={artist.coverImage}
+                name={artist.name}
+                verified={artist.verified}
+                subscribers={artist.subscribers}
+                onBack={() => navigation.goBack()}
+              />
+            )}
+
+            <GlassTabs active={activeTab} onChange={setActiveTab} />
+
+            <FlatList
+              data={filteredSongs}
+              keyExtractor={(item) => item.id}
+              contentContainerStyle={{
+                paddingBottom: tabBarHeight + 140,
+              }}
+              renderItem={({ item }) => <SongRow song={item} onPress={() => handleSongPress(item)} />}
+              showsVerticalScrollIndicator={false}
+              ListEmptyComponent={
+                <View style={styles.loadingWrap}>
+                  <Text style={styles.emptyText}>No uploads yet.</Text>
+                </View>
+              }
+            />
+          </>
+        )}
       </View>
     </SafeAreaView>
   );
@@ -353,6 +413,53 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: '#000',
+  },
+
+  youtubeVideoWrap: {
+    height: 240,
+    backgroundColor: '#000',
+  },
+  youtubeVideo: {
+    width: '100%',
+    height: '100%',
+    backgroundColor: '#000',
+  },
+  youtubeVideoTopGradient: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    height: 120,
+  },
+  youtubeVideoTopRow: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    paddingHorizontal: 14,
+    paddingTop: 10,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'flex-start',
+  },
+
+  loadingWrap: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: 22,
+  },
+  errorText: {
+    color: 'rgba(255,255,255,0.75)',
+    fontSize: 14,
+    fontWeight: '600',
+    textAlign: 'center',
+  },
+  emptyText: {
+    color: 'rgba(255,255,255,0.55)',
+    fontSize: 13,
+    fontWeight: '600',
+    textAlign: 'center',
   },
 
   headerWrap: {

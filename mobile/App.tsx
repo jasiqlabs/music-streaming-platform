@@ -4,6 +4,8 @@ import React from 'react';
 import AppNavigator from './apps/fan/src/navigation/AppNavigator';
 import { AuthProvider } from './apps/fan/src/store/authStore';
 import { ConnectivityProvider } from './apps/fan/src/providers/ConnectivityProvider';
+import { MediaPlayerProvider } from './apps/fan/src/providers/MediaPlayerProvider';
+import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import ErrorBoundary from './apps/fan/src/ui/ErrorBoundary';
 
@@ -21,11 +23,15 @@ export default function App() {
   return (
     <ErrorBoundary label="Fan App">
       <QueryClientProvider client={queryClient}>
-        <AuthProvider>
-          <ConnectivityProvider>
-            <AppNavigator />
-          </ConnectivityProvider>
-        </AuthProvider>
+        <SafeAreaProvider>
+          <AuthProvider>
+            <ConnectivityProvider>
+              <MediaPlayerProvider>
+                <AppNavigator />
+              </MediaPlayerProvider>
+            </ConnectivityProvider>
+          </AuthProvider>
+        </SafeAreaProvider>
       </QueryClientProvider>
     </ErrorBoundary>
   );

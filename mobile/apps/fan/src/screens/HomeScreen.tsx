@@ -4,6 +4,7 @@ import {
   FlatList,
   Image,
   Pressable,
+  RefreshControl,
   ScrollView,
   StyleSheet,
   Text,
@@ -15,8 +16,9 @@ import {
 import { LinearGradient } from 'expo-linear-gradient';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useBottomTabBarHeight } from '@react-navigation/bottom-tabs';
-import { BadgeCheck, Lock, Pause, Play, Search, SkipForward } from 'lucide-react-native';
+import { BadgeCheck, Lock, Play, Search } from 'lucide-react-native';
 import { apiV1 } from '../services/api';
+import { fetchVerifiedArtists, type ArtistListItem } from '../services/artistService';
 
 const { width } = Dimensions.get('window');
 
@@ -29,6 +31,9 @@ type ArtistCard = {
   isSubscriptionBased?: boolean;
 };
 
+const FALLBACK_THUMBNAIL =
+  'https://images.unsplash.com/photo-1464863979621-258859e62245?auto=format&fit=crop&w=1400&q=80';
+
 type ContentCard = {
   id: string;
   title: string;
@@ -36,6 +41,8 @@ type ContentCard = {
   description: string;
   thumbnail: string;
   isLocked: boolean;
+  createdAt?: string | null;
+  mediaType?: 'audio' | 'video';
 };
 
 type ApiContentItem = {
@@ -43,8 +50,11 @@ type ApiContentItem = {
   title?: string;
   type?: string;
   artwork?: string | null;
+  thumbnailUrl?: string | null;
   locked?: boolean;
   artistName?: string | null;
+  createdAt?: string | null;
+  mediaType?: string | null;
   isVerified?: boolean;
   verified?: boolean;
   artist?: {
@@ -58,109 +68,94 @@ export default function HomeScreen({ navigation }: any) {
   const tabBarHeight = useBottomTabBarHeight();
 
   const [loading, setLoading] = useState(true);
+  const [artistsLoading, setArtistsLoading] = useState(true);
+  const [artistsError, setArtistsError] = useState<string | null>(null);
+  const [refreshing, setRefreshing] = useState(false);
   const [featuredArtists, setFeaturedArtists] = useState<ArtistCard[]>([]);
   const [trendingArtists, setTrendingArtists] = useState<ArtistCard[]>([]);
   const [recentlyAdded, setRecentlyAdded] = useState<ContentCard[]>([]);
 
-  const [currentSong, setCurrentSong] = useState<ContentCard | null>(null);
-  const [isPlaying, setIsPlaying] = useState(false);
-
   useEffect(() => {
     let mounted = true;
-    (async () => {
+    const toArtistCard = (a: ArtistListItem): ArtistCard => {
+      const isSubscriptionBased = Number(a.subscriptionPrice ?? 0) > 0;
+      return {
+        id: a.id,
+        name: a.name,
+        image: a.image,
+        isVerified: Boolean(a.isVerified),
+        isSubscriptionBased,
+        subText: isSubscriptionBased ? 'Subscription Based' : a.genre || 'Artist',
+      };
+    };
+
+    const load = async (opts?: { isRefresh?: boolean }) => {
+      const isRefresh = Boolean(opts?.isRefresh);
       try {
-        setLoading(true);
+        if (isRefresh) setRefreshing(true);
 
-        const mockFeatured: ArtistCard[] = [
-          {
-            id: 'luna-ray',
-            name: 'Luna Ray',
-            subText: 'Subscription Based',
-            image:
-              'https://images.unsplash.com/photo-1524504388940-b1c1722653e1?auto=format&fit=crop&w=1000&q=80',
-            isVerified: true,
-            isSubscriptionBased: true,
-          },
-          {
-            id: 'david-stone',
-            name: 'David Stone',
-            subText: 'Bogaert',
-            image:
-              'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?auto=format&fit=crop&w=1000&q=80',
-          },
-          {
-            id: 'violet-deen',
-            name: 'Violet Deen',
-            subText: 'Bogaert',
-            image:
-              'https://images.unsplash.com/photo-1524250502761-1ac6f2e30d43?auto=format&fit=crop&w=1000&q=80',
-          },
-        ];
+        setArtistsLoading(true);
+        setArtistsError(null);
 
-        const mockTrending: ArtistCard[] = [
-          {
-            id: 'kari-lucas',
-            name: 'Kari Lucas',
-            subText: 'Dusian',
-            image:
-              'https://images.unsplash.com/photo-1524502397800-2eeaad7c3fe5?auto=format&fit=crop&w=800&q=80',
-          },
-          {
-            id: 'derek-maas',
-            name: 'Derek Maas',
-            subText: 'Dusian',
-            image:
-              'https://images.unsplash.com/photo-1544723795-3fb6469f5b39?auto=format&fit=crop&w=800&q=80',
-          },
-          {
-            id: 'luna-ray-trending',
-            name: 'Luna Ray',
-            subText: 'Dusian',
-            image:
-              'https://images.unsplash.com/photo-1524503033411-f6e95c1c530f?auto=format&fit=crop&w=800&q=80',
-            isVerified: true,
-          },
-          {
-            id: 'violet-deen-trending',
-            name: 'Violet Deen',
-            subText: 'Bogaert',
-            image:
-              'https://images.unsplash.com/photo-1544005313-94ddf0286df2?auto=format&fit=crop&w=800&q=80',
-          },
-        ];
+        const [artists, contentRes] = await Promise.all([
+          fetchVerifiedArtists(),
+          apiV1.get('/content').catch(() => null),
+        ]);
+
+        const featured = artists.slice(0, 3).map(toArtistCard);
+        const trending = artists.slice(0, 12).map(toArtistCard);
 
         let recentFromApi: ContentCard[] = [];
-        try {
-          const res = await apiV1.get('/content');
-          const apiItems: ApiContentItem[] = Array.isArray(res.data?.items) ? res.data.items : [];
-          recentFromApi = apiItems.map((it) => ({
-            id: String(it.id),
-            title: it.title ?? 'Untitled',
-            artist: String(it.artistName ?? it.artist?.name ?? 'Artist'),
-            description: (it.type || '').toString(),
-            thumbnail: it.artwork || 'https://images.unsplash.com/photo-1464863979621-258859e62245?auto=format&fit=crop&w=1400&q=80',
-            isLocked: Boolean(it.locked),
-          }));
-        } catch {
-          recentFromApi = [];
+        if (contentRes?.data) {
+          const apiItems: ApiContentItem[] = Array.isArray(contentRes.data?.items)
+            ? contentRes.data.items
+            : [];
+          recentFromApi = apiItems
+            .map((it) => {
+              const mediaTypeRaw = (it.mediaType || it.type || '').toString().toLowerCase();
+              const mediaType: ContentCard['mediaType'] = mediaTypeRaw === 'video' ? 'video' : 'audio';
+              const thumb = (it.thumbnailUrl || it.artwork || '').toString();
+              return {
+                id: String(it.id),
+                title: it.title ?? 'Untitled',
+                artist: String(it.artistName ?? it.artist?.name ?? 'Artist'),
+                description: (it.type || '').toString(),
+                thumbnail: thumb || FALLBACK_THUMBNAIL,
+                isLocked: Boolean(it.locked),
+                createdAt: (it.createdAt ?? null) as any,
+                mediaType,
+              };
+            })
+            .sort((a, b) => {
+              const ta = a.createdAt ? new Date(a.createdAt).getTime() : 0;
+              const tb = b.createdAt ? new Date(b.createdAt).getTime() : 0;
+              return tb - ta;
+            });
         }
 
         if (!mounted) return;
-        setFeaturedArtists(mockFeatured);
-        setTrendingArtists(mockTrending);
+        setFeaturedArtists(featured);
+        setTrendingArtists(trending);
         setRecentlyAdded(recentFromApi);
-        setCurrentSong(recentFromApi[0] || null);
+      } catch {
+        if (!mounted) return;
+        setFeaturedArtists([]);
+        setTrendingArtists([]);
+        setArtistsError('Could not load artists. Please try again.');
       } finally {
-        if (mounted) setLoading(false);
+        if (!mounted) return;
+        setArtistsLoading(false);
+        setLoading(false);
+        setRefreshing(false);
       }
-    })();
+    };
+
+    load();
 
     return () => {
       mounted = false;
     };
   }, []);
-
-  const miniProgress = useMemo(() => 0.4, []);
 
   const onPressArtist = (artistId: string) => {
     navigation.navigate('Artist', { artistId });
@@ -206,7 +201,7 @@ export default function HomeScreen({ navigation }: any) {
           </Text>
           {item.isVerified ? (
             <View style={styles.verifiedWrap}>
-              <BadgeCheck color="#4AA3FF" fill="#4AA3FF" size={18} />
+              <BadgeCheck color="#22c55e" fill="#22c55e" size={18} />
             </View>
           ) : null}
         </View>
@@ -225,9 +220,16 @@ export default function HomeScreen({ navigation }: any) {
   const renderTrendingArtist = ({ item }: { item: ArtistCard }) => (
     <Pressable style={styles.trendingCard} onPress={() => onPressArtist(item.id)}>
       <Image source={{ uri: item.image }} style={styles.trendingImg} />
-      <Text style={styles.trendingName} numberOfLines={1}>
-        {item.name}
-      </Text>
+      <View style={styles.trendingNameRow}>
+        <Text style={styles.trendingName} numberOfLines={1}>
+          {item.name}
+        </Text>
+        {item.isVerified ? (
+          <View style={styles.trendingVerified}>
+            <BadgeCheck color="#22c55e" fill="#22c55e" size={14} />
+          </View>
+        ) : null}
+      </View>
       <Text style={styles.trendingSubText} numberOfLines={1}>
         {item.subText}
       </Text>
@@ -236,7 +238,14 @@ export default function HomeScreen({ navigation }: any) {
 
   const renderRecentlyAdded = ({ item }: { item: ContentCard }) => (
     <Pressable style={styles.recentCard} onPress={() => onPressContent(item)}>
-      <Image source={{ uri: item.thumbnail }} style={styles.recentImg} />
+      <Image source={{ uri: item.thumbnail || FALLBACK_THUMBNAIL }} style={styles.recentImg} />
+      <View style={styles.mediaTypePill}>
+        {item.mediaType === 'video' ? (
+          <Play color="#fff" size={14} />
+        ) : (
+          <View style={styles.audioDot} />
+        )}
+      </View>
       {item.isLocked ? (
         <View style={styles.lockPill}>
           <Lock color="#fff" size={14} />
@@ -254,9 +263,42 @@ export default function HomeScreen({ navigation }: any) {
 
   return (
     <SafeAreaView style={styles.container}>
+      <View style={styles.pageWrap}>
       <ScrollView
         showsVerticalScrollIndicator={false}
-        contentContainerStyle={{ paddingBottom: tabBarHeight + 140 }}
+        contentContainerStyle={{ paddingBottom: tabBarHeight + 220 }}
+        refreshControl={
+          <RefreshControl
+            tintColor="#FF6A00"
+            refreshing={refreshing}
+            onRefresh={async () => {
+              setRefreshing(true);
+              setArtistsError(null);
+
+              try {
+                const artists = await fetchVerifiedArtists();
+                const toArtistCard = (a: ArtistListItem): ArtistCard => {
+                  const isSubscriptionBased = Number(a.subscriptionPrice ?? 0) > 0;
+                  return {
+                    id: a.id,
+                    name: a.name,
+                    image: a.image,
+                    isVerified: Boolean(a.isVerified),
+                    isSubscriptionBased,
+                    subText: isSubscriptionBased ? 'Subscription Based' : a.genre || 'Artist',
+                  };
+                };
+
+                setFeaturedArtists(artists.slice(0, 3).map(toArtistCard));
+                setTrendingArtists(artists.slice(0, 12).map(toArtistCard));
+              } catch {
+                setArtistsError('Could not refresh artists. Please try again.');
+              } finally {
+                setRefreshing(false);
+              }
+            }}
+          />
+        }
       >
         {/* HEADER */}
         <View style={styles.header}>
@@ -269,15 +311,59 @@ export default function HomeScreen({ navigation }: any) {
 
         {/* FEATURED ARTISTS */}
         <Text style={styles.sectionTitleTop}>Featured Artists</Text>
-        <FlatList
-          data={featuredArtists}
-          horizontal
-          renderItem={renderFeaturedArtist}
-          keyExtractor={(item) => item.id}
-          showsHorizontalScrollIndicator={false}
-          nestedScrollEnabled
-          contentContainerStyle={{ paddingLeft: 18, paddingRight: 8 }}
-        />
+        {artistsLoading ? (
+          <View style={styles.sectionLoadingRow}>
+            <ActivityIndicator color="#FF6A00" />
+          </View>
+        ) : artistsError ? (
+          <View style={styles.sectionErrorWrap}>
+            <Text style={styles.sectionErrorText}>{artistsError}</Text>
+            <Pressable
+              onPress={async () => {
+                setArtistsLoading(true);
+                setArtistsError(null);
+                try {
+                  const artists = await fetchVerifiedArtists();
+                  const toArtistCard = (a: ArtistListItem): ArtistCard => {
+                    const isSubscriptionBased = Number(a.subscriptionPrice ?? 0) > 0;
+                    return {
+                      id: a.id,
+                      name: a.name,
+                      image: a.image,
+                      isVerified: Boolean(a.isVerified),
+                      isSubscriptionBased,
+                      subText: isSubscriptionBased ? 'Subscription Based' : a.genre || 'Artist',
+                    };
+                  };
+
+                  setFeaturedArtists(artists.slice(0, 3).map(toArtistCard));
+                  setTrendingArtists(artists.slice(0, 12).map(toArtistCard));
+                } catch {
+                  setArtistsError('Could not load artists. Please try again.');
+                } finally {
+                  setArtistsLoading(false);
+                }
+              }}
+              style={styles.retryBtn}
+            >
+              <Text style={styles.retryBtnText}>Retry</Text>
+            </Pressable>
+          </View>
+        ) : featuredArtists.length ? (
+          <FlatList
+            data={featuredArtists}
+            horizontal
+            renderItem={renderFeaturedArtist}
+            keyExtractor={(item) => item.id}
+            showsHorizontalScrollIndicator={false}
+            nestedScrollEnabled
+            contentContainerStyle={{ paddingLeft: 18, paddingRight: 8 }}
+          />
+        ) : (
+          <View style={styles.sectionEmptyWrap}>
+            <Text style={styles.sectionEmptyText}>No featured artists yet.</Text>
+          </View>
+        )}
 
         {/* TRENDING ARTISTS */}
         <View style={styles.sectionHeaderRow}>
@@ -286,15 +372,29 @@ export default function HomeScreen({ navigation }: any) {
             <Text style={styles.seeAll}>See All  &gt;</Text>
           </TouchableOpacity>
         </View>
-        <FlatList
-          data={trendingArtists}
-          horizontal
-          showsHorizontalScrollIndicator={false}
-          contentContainerStyle={{ paddingLeft: 18, paddingRight: 8 }}
-          renderItem={renderTrendingArtist}
-          keyExtractor={(item) => item.id}
-          nestedScrollEnabled
-        />
+        {artistsLoading ? (
+          <View style={styles.sectionLoadingRow}>
+            <ActivityIndicator color="#FF6A00" />
+          </View>
+        ) : artistsError ? (
+          <View style={styles.sectionEmptyWrap}>
+            <Text style={styles.sectionEmptyText}>Trending artists unavailable.</Text>
+          </View>
+        ) : trendingArtists.length ? (
+          <FlatList
+            data={trendingArtists}
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            contentContainerStyle={{ paddingLeft: 18, paddingRight: 8 }}
+            renderItem={renderTrendingArtist}
+            keyExtractor={(item) => item.id}
+            nestedScrollEnabled
+          />
+        ) : (
+          <View style={styles.sectionEmptyWrap}>
+            <Text style={styles.sectionEmptyText}>No trending artists yet.</Text>
+          </View>
+        )}
 
         {/* RECENTLY ADDED */}
         <Text style={styles.sectionTitleTop}>Recently Added</Text>
@@ -308,45 +408,7 @@ export default function HomeScreen({ navigation }: any) {
           keyExtractor={(item) => item.id}
         />
       </ScrollView>
-
-      {/* MINI PLAYER */}
-      {currentSong && (
-        <View
-          style={[
-            styles.miniPlayer,
-            { bottom: tabBarHeight + 12 },
-          ]}
-        >
-          <Image
-            source={{ uri: currentSong.thumbnail }}
-            style={styles.miniPlayerImg}
-          />
-
-          <View style={{ flex: 1, marginLeft: 10 }}>
-            <Text style={styles.miniSongTitle}>
-              {currentSong.title}
-            </Text>
-            <Text style={styles.miniArtistName}>
-              {currentSong.artist}
-            </Text>
-            <View style={styles.miniProgressTrack}>
-              <View style={[styles.miniProgressFill, { width: `${miniProgress * 100}%` }]} />
-            </View>
-          </View>
-
-          <Pressable onPress={() => setIsPlaying(!isPlaying)} style={styles.miniControlBtn}>
-            {isPlaying ? (
-              <Pause color="#fff" size={22} />
-            ) : (
-              <Play color="#fff" size={22} />
-            )}
-          </Pressable>
-
-          <Pressable onPress={() => {}} style={[styles.miniControlBtn, { marginLeft: 10 }]}>
-            <SkipForward color="#fff" size={20} />
-          </Pressable>
-        </View>
-      )}
+      </View>
     </SafeAreaView>
   );
 }
@@ -357,6 +419,10 @@ export default function HomeScreen({ navigation }: any) {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#000' },
+  pageWrap: {
+    flex: 1,
+    minHeight: '100%',
+  },
 
   loading: {
     flex: 1,
@@ -485,17 +551,71 @@ const styles = StyleSheet.create({
     borderRadius: 16,
     backgroundColor: 'rgba(255,255,255,0.04)',
   },
+  trendingNameRow: {
+    marginTop: 8,
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
   trendingName: {
     color: '#fff',
     fontSize: 13,
     fontWeight: '700',
-    marginTop: 8,
+  },
+  trendingVerified: {
+    marginLeft: 6,
+    marginTop: 1,
   },
   trendingSubText: {
     color: 'rgba(255,255,255,0.45)',
     fontSize: 11,
     fontWeight: '600',
     marginTop: 3,
+  },
+
+  sectionLoadingRow: {
+    paddingHorizontal: 18,
+    paddingVertical: 18,
+    alignItems: 'flex-start',
+  },
+
+  sectionErrorWrap: {
+    paddingHorizontal: 18,
+    paddingVertical: 14,
+    alignItems: 'flex-start',
+  },
+
+  sectionErrorText: {
+    color: 'rgba(255,255,255,0.65)',
+    fontSize: 13,
+    fontWeight: '600',
+    marginBottom: 10,
+  },
+
+  retryBtn: {
+    alignSelf: 'flex-start',
+    backgroundColor: 'rgba(255,106,0,0.16)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,106,0,0.35)',
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 12,
+  },
+
+  retryBtnText: {
+    color: '#FF6A00',
+    fontSize: 12,
+    fontWeight: '800',
+  },
+
+  sectionEmptyWrap: {
+    paddingHorizontal: 18,
+    paddingVertical: 14,
+  },
+
+  sectionEmptyText: {
+    color: 'rgba(255,255,255,0.55)',
+    fontSize: 13,
+    fontWeight: '600',
   },
 
   recentCard: {
@@ -526,52 +646,24 @@ const styles = StyleSheet.create({
     borderColor: 'rgba(255,255,255,0.15)',
   },
 
-  miniPlayer: {
+  mediaTypePill: {
     position: 'absolute',
-    left: 15,
-    right: 15,
-    height: 70,
-    backgroundColor: 'rgba(18,18,18,0.78)',
-    borderRadius: 18,
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: 10,
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.08)',
-  },
-
-  miniPlayerImg: {
-    width: 50,
-    height: 50,
-    borderRadius: 8,
-  },
-
-  miniSongTitle: {
-    color: '#fff',
-    fontWeight: 'bold',
-  },
-
-  miniArtistName: {
-    color: '#888',
-  },
-
-  miniProgressTrack: {
-    marginTop: 8,
-    height: 2,
-    borderRadius: 2,
-    backgroundColor: 'rgba(255,255,255,0.18)',
-    overflow: 'hidden',
-  },
-  miniProgressFill: {
-    height: '100%',
-    backgroundColor: '#fff',
-  },
-
-  miniControlBtn: {
-    width: 40,
-    height: 40,
-    borderRadius: 14,
+    bottom: 10,
+    left: 10,
+    width: 28,
+    height: 28,
+    borderRadius: 10,
     alignItems: 'center',
     justifyContent: 'center',
+    backgroundColor: 'rgba(0,0,0,0.45)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.15)',
+  },
+  audioDot: {
+    width: 10,
+    height: 10,
+    borderRadius: 5,
+    backgroundColor: '#fff',
+    opacity: 0.9,
   },
 });

@@ -11,6 +11,7 @@ import {
   StyleSheet,
   Text,
   TextInput,
+  useWindowDimensions,
   View,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -23,6 +24,9 @@ type Props = NativeStackScreenProps<RootStackParamList, 'Login'>;
 
 export default function LoginScreen({ navigation }: Props) {
   const { login, isLoggingIn } = useAuth();
+  const { width, height } = useWindowDimensions();
+  const isDesktop = Platform.OS === 'web' && width > 768;
+  const webViewportStyle = Platform.OS === 'web' ? { width, height } : null;
 
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -54,70 +58,78 @@ export default function LoginScreen({ navigation }: Props) {
   return (
     <ImageBackground
       source={require('../logo.jpg')}
-      style={styles.bg}
+      style={[styles.bg, webViewportStyle]}
+      resizeMode="cover"
       blurRadius={30}
     >
       <KeyboardAvoidingView
         behavior={Platform.select({ ios: 'padding' })}
         style={styles.overlay}
       >
-        <Image
-          source={require('../logo.jpg')}
-          style={styles.logo}
-        />
-
-        <View style={styles.card}>
-          <Text style={styles.title}>Sign In</Text>
-
-          <TextInput
-            placeholder="Email"
-            placeholderTextColor="#aaa"
-            style={styles.input}
-            value={email}
-            onChangeText={setEmail}
-            autoCapitalize="none"
-            autoCorrect={false}
-            keyboardType="email-address"
+        <View
+          style={[
+            styles.content,
+            isDesktop ? styles.contentDesktop : styles.contentMobile,
+          ]}
+        >
+          <Image
+            source={require('../logo.jpg')}
+            style={[styles.logo, isDesktop && styles.logoDesktop]}
           />
 
-          <View style={styles.passwordContainer}>
+          <View style={[styles.card, isDesktop && styles.cardDesktop]}>
+            <Text style={styles.title}>Sign In</Text>
+
             <TextInput
-              placeholder="Password"
+              placeholder="Email"
               placeholderTextColor="#aaa"
-              style={styles.passwordInput}
-              secureTextEntry={!isPasswordVisible}
-              value={password}
-              onChangeText={setPassword}
+              style={styles.input}
+              value={email}
+              onChangeText={setEmail}
               autoCapitalize="none"
               autoCorrect={false}
+              keyboardType="email-address"
             />
-            <Pressable
-              onPress={() => setIsPasswordVisible((v) => !v)}
-              hitSlop={10}
-              style={styles.eyeButton}
-            >
-              {isPasswordVisible ? (
-                <EyeOff color="#ddd" size={18} />
-              ) : (
-                <Eye color="#ddd" size={18} />
-              )}
+
+            <View style={styles.passwordContainer}>
+              <TextInput
+                placeholder="Password"
+                placeholderTextColor="#aaa"
+                style={styles.passwordInput}
+                secureTextEntry={!isPasswordVisible}
+                value={password}
+                onChangeText={setPassword}
+                autoCapitalize="none"
+                autoCorrect={false}
+              />
+              <Pressable
+                onPress={() => setIsPasswordVisible((v) => !v)}
+                hitSlop={10}
+                style={styles.eyeButton}
+              >
+                {isPasswordVisible ? (
+                  <EyeOff color="#ddd" size={18} />
+                ) : (
+                  <Eye color="#ddd" size={18} />
+                )}
+              </Pressable>
+            </View>
+
+            <Pressable onPress={onSubmit} disabled={!canSubmit}>
+              <LinearGradient
+                colors={['#ff7a18', '#ff3d00']}
+                style={styles.button}
+              >
+                {isLoggingIn ? (
+                  <ActivityIndicator color="#fff" />
+                ) : (
+                  <Text style={styles.btnText}>Sign In</Text>
+                )}
+              </LinearGradient>
             </Pressable>
+
+            <Text style={styles.link}>Create account</Text>
           </View>
-
-          <Pressable onPress={onSubmit} disabled={!canSubmit}>
-            <LinearGradient
-              colors={['#ff7a18', '#ff3d00']}
-              style={styles.button}
-            >
-              {isLoggingIn ? (
-                <ActivityIndicator color="#fff" />
-              ) : (
-                <Text style={styles.btnText}>Sign In</Text>
-              )}
-            </LinearGradient>
-          </Pressable>
-
-          <Text style={styles.link}>Create account</Text>
         </View>
       </KeyboardAvoidingView>
     </ImageBackground>
@@ -127,18 +139,37 @@ export default function LoginScreen({ navigation }: Props) {
 const styles = StyleSheet.create({
   bg: {
     flex: 1,
+    backgroundColor: '#000',
   },
   overlay: {
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
+    width: '100%',
+    minHeight: '100%',
     padding: 24,
     backgroundColor: 'rgba(0,0,0,0.75)',
+  },
+  content: {
+    justifyContent: 'center',
+    alignItems: 'center',
+    width: '100%',
+  },
+  contentMobile: {
+    width: '100%',
+  },
+  contentDesktop: {
+    maxWidth: 440,
   },
   logo: {
     width: 90,
     height: 90,
     marginBottom: 30,
+  },
+  logoDesktop: {
+    width: 84,
+    height: 84,
+    marginBottom: 24,
   },
   card: {
     width: '100%',
@@ -147,6 +178,22 @@ const styles = StyleSheet.create({
     padding: 20,
     borderWidth: 1,
     borderColor: 'rgba(255,255,255,0.15)',
+  },
+  cardDesktop: {
+    padding: 24,
+    backgroundColor: 'rgba(18,18,20,0.72)',
+    ...Platform.select({
+      web: {
+        boxShadow: '0px 16px 40px rgba(0,0,0,0.45)',
+      },
+      default: {
+        shadowColor: '#000',
+        shadowOpacity: 0.25,
+        shadowRadius: 16,
+        shadowOffset: { width: 0, height: 10 },
+        elevation: 10,
+      },
+    }),
   },
   title: {
     color: '#fff',

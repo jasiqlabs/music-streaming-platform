@@ -12,7 +12,7 @@ import {
   View,
 } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { CommonActions, useNavigation } from '@react-navigation/native';
 import { useAuth } from '../store/authStore';
 import { CreditCard, HelpCircle, LogOut, User } from 'lucide-react-native';
@@ -31,6 +31,11 @@ function PremiumBadge() {
 export default function AccountScreen() {
   const { user, userAccountStatus, logout } = useAuth();
   const navigation = useNavigation<any>();
+  const insets = useSafeAreaInsets();
+
+  const scrollContentPaddingBottom = React.useMemo(() => {
+    return Math.max(insets.bottom, 0) + 110;
+  }, [insets.bottom]);
 
   const performLogout = React.useCallback(async () => {
     console.log('DEBUG: Logout initiated');
@@ -181,7 +186,11 @@ export default function AccountScreen() {
 
   return (
     <SafeAreaView style={styles.container}>
-      <ScrollView style={styles.scrollView} showsVerticalScrollIndicator={false}>
+      <ScrollView
+        style={styles.scrollView}
+        contentContainerStyle={[styles.scrollContent, { paddingBottom: scrollContentPaddingBottom }]}
+        showsVerticalScrollIndicator={false}
+      >
         <View style={styles.header}>
           <Text style={styles.title}>Account</Text>
           <Text style={styles.sub}>Manage your profile and settings.</Text>
@@ -381,6 +390,9 @@ const styles = StyleSheet.create({
   },
   scrollView: {
     flex: 1,
+  },
+  scrollContent: {
+    paddingBottom: 24,
   },
   header: {
     alignItems: 'center',

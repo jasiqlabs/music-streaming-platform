@@ -148,7 +148,7 @@ export default function ArtistAnalyticsSummaryPage() {
       className="relative overflow-hidden rounded-[10px] border border-white/10 bg-[#141010]/35 backdrop-blur shadow-[0_30px_80px_rgba(0,0,0,0.55)]"
       style={backgroundStyle}
     >
-      <div className="relative px-10 py-10">
+      <div className="relative px-4 py-6 sm:px-8 sm:py-8 lg:px-10 lg:py-10">
         <div className="text-[28px] font-light tracking-wide text-[#e6d6d2]">Analytics Summary</div>
 
         {error ? <div className="mt-4 text-[13px] text-[#e3a1a1]">{error}</div> : null}

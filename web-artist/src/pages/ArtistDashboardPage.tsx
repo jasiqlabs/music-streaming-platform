@@ -70,7 +70,7 @@ export default function ArtistDashboardPage() {
 
   return (
     <div className="relative overflow-hidden rounded-[10px] border border-white/10 bg-[#141010]/35 backdrop-blur shadow-[0_30px_80px_rgba(0,0,0,0.55)]" style={backgroundStyle}>
-      <div className="relative px-10 py-10">
+      <div className="relative px-4 py-6 sm:px-8 sm:py-8 lg:px-10 lg:py-10">
         <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
           <div className="rounded-[10px] border border-white/10 bg-[#0e0a0a]/25 px-7 py-6">
             <div className="flex items-center gap-3 text-[12px] uppercase tracking-widest text-[#8d7b77]">

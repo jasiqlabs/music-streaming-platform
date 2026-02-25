@@ -71,7 +71,7 @@ export default function ArtistPricingPage() {
     <ErrorBoundary label="Artist: Pricing">
       <div className="w-full" style={backgroundStyle}>
         <div className="rounded-[10px] border border-white/10 bg-[#141010]/35 backdrop-blur px-7 py-6 shadow-[0_24px_60px_rgba(0,0,0,0.45)]">
-          <div className="relative px-10 py-10">
+          <div className="relative px-4 py-6 sm:px-8 sm:py-8 lg:px-10 lg:py-10">
             <div className="text-[28px] font-light tracking-wide text-[#e6d6d2]">Subscription Pricing</div>
 
             <div className="mt-6 rounded-[10px] border border-white/10 bg-[#0e0a0a]/25 px-8 py-7">

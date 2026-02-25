@@ -20,12 +20,79 @@ export default function ArtistAccountPage() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
+  const [imageUploading, setImageUploading] = useState<"profile" | "banner" | null>(null);
+  const [imageError, setImageError] = useState<string | null>(null);
 
   const [name, setName] = useState("");
   const [bio, setBio] = useState("");
   const [profileImageUrl, setProfileImageUrl] = useState<string | null>(null);
   const [bannerImageUrl, setBannerImageUrl] = useState<string | null>(null);
   const [accentColor, setAccentColor] = useState<string | null>(null);
+
+  const apiBaseUrl = useMemo(() => {
+    return (import.meta.env.VITE_API_BASE_URL || "http://localhost:8000").toString().replace(/\/$/, "");
+  }, []);
+
+  const resolvePublicUrl = (url: string | null) => {
+    const raw = (url || "").toString().trim();
+    if (!raw) return null;
+    if (raw.startsWith("http://") || raw.startsWith("https://")) return raw;
+    if (raw.startsWith("/")) return `${apiBaseUrl}${raw}`;
+    return raw;
+  };
+
+  const profileSrc = useMemo(() => resolvePublicUrl(profileImageUrl), [profileImageUrl]);
+  const bannerSrc = useMemo(() => resolvePublicUrl(bannerImageUrl), [bannerImageUrl]);
+
+  const uploadImage = async (kind: "profile" | "banner", file: File) => {
+    setImageError(null);
+    setImageUploading(kind);
+    try {
+      const form = new FormData();
+      form.append("kind", kind);
+      form.append("image", file);
+
+      const res = await http.post<{ success: boolean; url?: string }>(
+        "/api/v1/artist/uploads/image",
+        form,
+        { headers: { "Content-Type": "multipart/form-data" } }
+      );
+
+      const url = resolvePublicUrl((res.data as any)?.url ?? null);
+      if (!url) {
+        setImageError("Upload failed. Please try again.");
+        return;
+      }
+
+      if (kind === "profile") setProfileImageUrl(url);
+      if (kind === "banner") setBannerImageUrl(url);
+    } catch (err: any) {
+      const message =
+        (err?.response?.data?.message as string | undefined) ||
+        (err?.message as string | undefined) ||
+        "Upload failed. Please try again.";
+      setImageError(message);
+    } finally {
+      setImageUploading(null);
+    }
+  };
+
+  const onPasteImage = async (kind: "profile" | "banner", e: React.ClipboardEvent) => {
+    const items = e.clipboardData?.items;
+    if (!items?.length) return;
+
+    const imgItem = Array.from(items).find((it) => it.type.startsWith("image/"));
+    if (!imgItem) return;
+
+    const blob = imgItem.getAsFile();
+    if (!blob) return;
+
+    e.preventDefault();
+
+    const ext = blob.type.split("/")[1] || "png";
+    const file = new File([blob], `${kind}-${Date.now()}.${ext}`, { type: blob.type });
+    await uploadImage(kind, file);
+  };
 
   const backgroundStyle = useMemo(() => {
     return {
@@ -40,8 +107,8 @@ export default function ArtistAccountPage() {
     if (!a) return;
     setName(a.name ?? "");
     setBio(a.bio ?? "");
-    setProfileImageUrl(a.profileImageUrl ?? null);
-    setBannerImageUrl(a.bannerImageUrl ?? null);
+    setProfileImageUrl(resolvePublicUrl(a.profileImageUrl ?? null));
+    setBannerImageUrl(resolvePublicUrl(a.bannerImageUrl ?? null));
     setAccentColor(a.accentColor ?? null);
   };
 
@@ -84,24 +151,24 @@ export default function ArtistAccountPage() {
       <div className="absolute inset-0 opacity-60" />
 
       <div className="relative">
-        <div className="px-10 py-10">
+        <div className="px-4 py-6 sm:px-8 sm:py-8 lg:px-10 lg:py-10">
           <div className="text-[28px] font-light tracking-wide text-[#e6d6d2]">Account Settings</div>
           <div className="mt-2 text-[13px] text-[#b8a6a1]">Manage your public profile and artist theme accent.</div>
 
           <div className="mt-8 rounded-[10px] border border-white/10 bg-[#0e0a0a]/35 overflow-hidden">
             <div className="h-[220px] bg-[#0a0808]">
-              {bannerImageUrl ? (
-                <img src={bannerImageUrl} alt="" className="h-full w-full object-cover" />
+              {bannerSrc ? (
+                <img src={bannerSrc} alt="" className="h-full w-full object-cover" />
               ) : (
                 <div className="h-full w-full bg-gradient-to-b from-[#241a1a] to-[#0a0808]" />
               )}
             </div>
 
-            <div className="px-8 pb-8">
+            <div className="px-4 pb-6 sm:px-8 sm:pb-8">
               <div className="-mt-10 flex items-end gap-5">
                 <div className="h-[84px] w-[84px] rounded-[14px] overflow-hidden border border-white/10 bg-[#141010] shadow-[0_14px_30px_rgba(0,0,0,0.55)]">
-                  {profileImageUrl ? (
-                    <img src={profileImageUrl} alt="" className="h-full w-full object-cover" />
+                  {profileSrc ? (
+                    <img src={profileSrc} alt="" className="h-full w-full object-cover" />
                   ) : (
                     <div className="h-full w-full bg-gradient-to-b from-[#2a1a17] to-[#0e0a0a]" />
                   )}
@@ -115,6 +182,12 @@ export default function ArtistAccountPage() {
               </div>
 
               <div className="mt-6 grid grid-cols-1 gap-5">
+                {imageError ? (
+                  <div className="rounded-[8px] border border-white/10 bg-[#0e0a0a]/35 px-4 py-3 text-[13px] text-[#d7b2ab]">
+                    {imageError}
+                  </div>
+                ) : null}
+
                 <div>
                   <div className="text-[12px] uppercase tracking-widest text-[#8d7b77]">Display name</div>
                   <input
@@ -139,6 +212,30 @@ export default function ArtistAccountPage() {
                 <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
                   <div>
                     <div className="text-[12px] uppercase tracking-widest text-[#8d7b77]">Profile image URL</div>
+                    <div
+                      className="mt-2 rounded-[8px] border border-white/10 bg-[#0e0a0a]/35 px-4 py-3"
+                      tabIndex={0}
+                      onPaste={(e) => onPasteImage("profile", e)}
+                      title="Paste an image here"
+                    >
+                      <div className="flex items-center gap-3">
+                        <input
+                          type="file"
+                          accept="image/*"
+                          onChange={async (e) => {
+                            const input = e.currentTarget;
+                            const file = e.target.files?.[0];
+                            if (!file) return;
+                            await uploadImage("profile", file);
+                            if (input) input.value = "";
+                          }}
+                          className="block w-full text-[12px] text-[#b8a6a1] file:mr-3 file:h-[32px] file:rounded-[6px] file:border file:border-white/10 file:bg-[#141010] file:px-3 file:text-[12px] file:text-[#e6d6d2]"
+                        />
+                        <div className="text-[11px] text-[#8d7b77] whitespace-nowrap">
+                          {imageUploading === "profile" ? "Uploading..." : "Select or paste"}
+                        </div>
+                      </div>
+                    </div>
                     <input
                       value={profileImageUrl ?? ""}
                       onChange={(e) => setProfileImageUrl(e.target.value || null)}
@@ -149,6 +246,30 @@ export default function ArtistAccountPage() {
 
                   <div>
                     <div className="text-[12px] uppercase tracking-widest text-[#8d7b77]">Banner image URL</div>
+                    <div
+                      className="mt-2 rounded-[8px] border border-white/10 bg-[#0e0a0a]/35 px-4 py-3"
+                      tabIndex={0}
+                      onPaste={(e) => onPasteImage("banner", e)}
+                      title="Paste an image here"
+                    >
+                      <div className="flex items-center gap-3">
+                        <input
+                          type="file"
+                          accept="image/*"
+                          onChange={async (e) => {
+                            const input = e.currentTarget;
+                            const file = e.target.files?.[0];
+                            if (!file) return;
+                            await uploadImage("banner", file);
+                            if (input) input.value = "";
+                          }}
+                          className="block w-full text-[12px] text-[#b8a6a1] file:mr-3 file:h-[32px] file:rounded-[6px] file:border file:border-white/10 file:bg-[#141010] file:px-3 file:text-[12px] file:text-[#e6d6d2]"
+                        />
+                        <div className="text-[11px] text-[#8d7b77] whitespace-nowrap">
+                          {imageUploading === "banner" ? "Uploading..." : "Select or paste"}
+                        </div>
+                      </div>
+                    </div>
                     <input
                       value={bannerImageUrl ?? ""}
                       onChange={(e) => setBannerImageUrl(e.target.value || null)}

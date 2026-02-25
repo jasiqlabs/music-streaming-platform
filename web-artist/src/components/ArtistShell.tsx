@@ -32,6 +32,7 @@ export default function ArtistShell() {
   const location = useLocation();
 
   const [menuOpen, setMenuOpen] = useState(false);
+  const [mobileNavOpen, setMobileNavOpen] = useState(false);
   const [me, setMe] = useState<MeResponse["artist"] | null>(null);
 
   const backgroundStyle = useMemo(() => {
@@ -78,105 +79,125 @@ export default function ArtistShell() {
 
   const activePath = location.pathname;
 
+  const navItems = useMemo(
+    () => [
+      { to: "/artist/dashboard", label: "Dashboard" },
+      { to: "/artist/account", label: "Account" },
+      { to: "/artist/pricing", label: "Pricing" },
+      { to: "/artist/analytics-summary", label: "Analytics" },
+      { to: "/artist/channel-preview", label: "Channel Preview" },
+      { to: "/artist/content-upload", label: "Content Upload" },
+      { to: "/artist/content-history", label: "Content History" }
+    ],
+    []
+  );
+
   return (
     <div className="min-h-screen w-full bg-[#0a0808] text-white" style={backgroundStyle}>
-      <div className="mx-auto w-full max-w-[1100px] px-6 py-8">
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-4">
-            <PremiumPlayLogo />
+      <div className="mx-auto w-full max-w-[1100px] px-4 sm:px-6 py-6 sm:py-8">
+        <div className="flex flex-col gap-4">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-3 sm:gap-4">
+              <button
+                type="button"
+                className="md:hidden h-[36px] w-[36px] rounded-[10px] border border-white/10 bg-[#141010]/60 flex items-center justify-center text-[#e6d6d2]"
+                onClick={() => {
+                  setMobileNavOpen((v) => !v);
+                  setMenuOpen(false);
+                }}
+                aria-label="Open menu"
+              >
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                  <path d="M4 7H20" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+                  <path d="M4 12H20" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+                  <path d="M4 17H20" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+                </svg>
+              </button>
 
-            <Link
-              to="/artist/dashboard"
-              className={`text-[13px] ${activePath.includes("/artist/dashboard") ? "text-white" : "text-[#b8a6a1] hover:text-white"}`}
-            >
-              Dashboard
-            </Link>
-            <Link
-              to="/artist/account"
-              className={`text-[13px] ${activePath.includes("/artist/account") ? "text-white" : "text-[#b8a6a1] hover:text-white"}`}
-            >
-              Account
-            </Link>
-            <Link
-              to="/artist/pricing"
-              className={`text-[13px] ${activePath.includes("/artist/pricing") ? "text-white" : "text-[#b8a6a1] hover:text-white"}`}
-            >
-              Pricing
-            </Link>
-            <Link
-              to="/artist/analytics-summary"
-              className={`text-[13px] ${activePath.includes("/artist/analytics-summary") ? "text-white" : "text-[#b8a6a1] hover:text-white"}`}
-            >
-              Analytics
-            </Link>
-            <Link
-              to="/artist/channel-preview"
-              className={`text-[13px] ${activePath.includes("/artist/channel-preview") ? "text-white" : "text-[#b8a6a1] hover:text-white"}`}
-            >
-              Channel Preview
-            </Link>
-            <Link
-              to="/artist/content-upload"
-              className={`text-[13px] ${activePath.includes("/artist/content-upload") ? "text-white" : "text-[#b8a6a1] hover:text-white"}`}
-            >
-              Content Upload
-            </Link>
-            <Link
-              to="/artist/content-history"
-              className={`text-[13px] ${activePath.includes("/artist/content-history") ? "text-white" : "text-[#b8a6a1] hover:text-white"}`}
-            >
-              Content History
-            </Link>
+              <PremiumPlayLogo />
+
+              <div className="hidden md:flex items-center gap-4">
+                {navItems.map((item) => (
+                  <Link
+                    key={item.to}
+                    to={item.to}
+                    className={`text-[13px] ${activePath.includes(item.to) ? "text-white" : "text-[#b8a6a1] hover:text-white"}`}
+                  >
+                    {item.label}
+                  </Link>
+                ))}
+              </div>
+            </div>
+
+            <div className="relative z-[9999]">
+              <button
+                type="button"
+                onClick={() => {
+                  setMenuOpen((v) => !v);
+                  setMobileNavOpen(false);
+                }}
+                className="flex items-center gap-2 text-[13px] text-[#d8c7c3] hover:text-white"
+              >
+                <div className="h-[26px] w-[26px] rounded-full overflow-hidden border border-white/10 bg-[#141010]/70">
+                  {me?.profileImageUrl ? (
+                    <img src={me.profileImageUrl} alt="" className="h-full w-full object-cover" />
+                  ) : (
+                    <div className="h-full w-full bg-gradient-to-b from-[#2a1a17] to-[#0e0a0a]" />
+                  )}
+                </div>
+                <span className="max-w-[160px] truncate">{me?.name || me?.email || "Account"}</span>
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                  <path d="M6 9L12 15L18 9" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+                </svg>
+              </button>
+
+              {menuOpen ? (
+                <div className="absolute right-0 z-[9999] mt-3 w-[200px] rounded-[6px] border border-white/10 bg-[#141010]/90 backdrop-blur px-2 py-2 shadow-[0_18px_40px_rgba(0,0,0,0.55)]">
+                  <button
+                    type="button"
+                    className="w-full text-left px-3 py-2 text-[13px] text-[#d8c7c3] hover:bg-white/5 rounded-[4px]"
+                    onClick={() => {
+                      setMenuOpen(false);
+                      navigate("/artist/account");
+                    }}
+                  >
+                    Account settings
+                  </button>
+
+                  <button
+                    type="button"
+                    className="w-full text-left px-3 py-2 text-[13px] text-[#d8c7c3] hover:bg-white/5 rounded-[4px]"
+                    onClick={() => {
+                      localStorage.removeItem("artistToken");
+                      navigate("/artist/login", { replace: true });
+                    }}
+                  >
+                    Logout
+                  </button>
+                </div>
+              ) : null}
+            </div>
           </div>
 
-          <div className="relative">
-            <button
-              type="button"
-              onClick={() => setMenuOpen((v) => !v)}
-              className="flex items-center gap-2 text-[13px] text-[#d8c7c3] hover:text-white"
-            >
-              <div className="h-[26px] w-[26px] rounded-full overflow-hidden border border-white/10 bg-[#141010]/70">
-                {me?.profileImageUrl ? (
-                  <img src={me.profileImageUrl} alt="" className="h-full w-full object-cover" />
-                ) : (
-                  <div className="h-full w-full bg-gradient-to-b from-[#2a1a17] to-[#0e0a0a]" />
-                )}
+          {mobileNavOpen ? (
+            <div className="md:hidden rounded-[10px] border border-white/10 bg-[#141010]/45 backdrop-blur shadow-[0_18px_40px_rgba(0,0,0,0.35)] overflow-hidden">
+              <div className="px-3 py-2">
+                {navItems.map((item) => (
+                  <Link
+                    key={item.to}
+                    to={item.to}
+                    onClick={() => setMobileNavOpen(false)}
+                    className={`block px-3 py-2 rounded-[8px] text-[13px] ${activePath.includes(item.to) ? "bg-white/5 text-white" : "text-[#d8c7c3] hover:bg-white/5"}`}
+                  >
+                    {item.label}
+                  </Link>
+                ))}
               </div>
-              <span className="max-w-[160px] truncate">{me?.name || me?.email || "Account"}</span>
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-                <path d="M6 9L12 15L18 9" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
-              </svg>
-            </button>
-
-            {menuOpen ? (
-              <div className="absolute right-0 mt-3 w-[200px] rounded-[6px] border border-white/10 bg-[#141010]/90 backdrop-blur px-2 py-2 shadow-[0_18px_40px_rgba(0,0,0,0.55)]">
-                <button
-                  type="button"
-                  className="w-full text-left px-3 py-2 text-[13px] text-[#d8c7c3] hover:bg-white/5 rounded-[4px]"
-                  onClick={() => {
-                    setMenuOpen(false);
-                    navigate("/artist/account");
-                  }}
-                >
-                  Account settings
-                </button>
-
-                <button
-                  type="button"
-                  className="w-full text-left px-3 py-2 text-[13px] text-[#d8c7c3] hover:bg-white/5 rounded-[4px]"
-                  onClick={() => {
-                    localStorage.removeItem("artistToken");
-                    navigate("/artist/login", { replace: true });
-                  }}
-                >
-                  Logout
-                </button>
-              </div>
-            ) : null}
-          </div>
+            </div>
+          ) : null}
         </div>
 
-        <div className="mt-8">
+        <div className="mt-6 sm:mt-8">
           <Outlet />
         </div>
       </div>

@@ -83,7 +83,7 @@ export default function ArtistChannelPreviewPage() {
       className="relative overflow-hidden rounded-[10px] border border-white/10 bg-[#141010]/35 backdrop-blur shadow-[0_30px_80px_rgba(0,0,0,0.55)]"
       style={backgroundStyle}
     >
-      <div className="relative px-10 py-10">
+      <div className="relative px-4 py-6 sm:px-8 sm:py-8 lg:px-10 lg:py-10">
         <div className="text-[28px] font-light tracking-wide text-[#e6d6d2]">Channel Preview Summary</div>
 
         {error ? <div className="mt-4 text-[13px] text-[#e3a1a1]">{error}</div> : null}
@@ -97,7 +97,7 @@ export default function ArtistChannelPreviewPage() {
             )}
             <div className="absolute inset-0 bg-gradient-to-t from-[#0b0808]/90 via-[#0b0808]/35 to-transparent" />
 
-            <div className="absolute left-8 bottom-6 right-8 flex items-end gap-5">
+            <div className="absolute left-4 bottom-5 right-4 sm:left-8 sm:bottom-6 sm:right-8 flex items-end gap-5">
               <div className="h-[86px] w-[86px] rounded-[16px] overflow-hidden border border-white/15 bg-[#141010]/70 shadow-[0_18px_40px_rgba(0,0,0,0.55)]">
                 {artist?.profileImageUrl ? (
                   <img src={artist.profileImageUrl} alt="" className="h-full w-full object-cover" />
@@ -118,7 +118,7 @@ export default function ArtistChannelPreviewPage() {
             </div>
           </div>
 
-          <div className="px-8 py-7">
+          <div className="px-4 py-6 sm:px-8 sm:py-7">
             {loading ? (
               <div className="text-[13px] text-[#b8a6a1]">Loading…</div>
             ) : items.length === 0 ? (
