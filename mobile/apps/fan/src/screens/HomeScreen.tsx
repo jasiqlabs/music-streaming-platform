@@ -38,6 +38,7 @@ type ContentCard = {
   id: string;
   title: string;
   artist: string;
+  artistId?: string;
   description: string;
   thumbnail: string;
   isLocked: boolean;
@@ -53,11 +54,13 @@ type ApiContentItem = {
   thumbnailUrl?: string | null;
   locked?: boolean;
   artistName?: string | null;
+  artistId?: string | number | null;
   createdAt?: string | null;
   mediaType?: string | null;
   isVerified?: boolean;
   verified?: boolean;
   artist?: {
+    id?: string | number | null;
     name?: string | null;
     isVerified?: boolean;
     verified?: boolean;
@@ -115,10 +118,12 @@ export default function HomeScreen({ navigation }: any) {
               const mediaTypeRaw = (it.mediaType || it.type || '').toString().toLowerCase();
               const mediaType: ContentCard['mediaType'] = mediaTypeRaw === 'video' ? 'video' : 'audio';
               const thumb = (it.thumbnailUrl || it.artwork || '').toString();
+              const artistId = (it.artistId ?? it.artist?.id ?? '') as any;
               return {
                 id: String(it.id),
                 title: it.title ?? 'Untitled',
                 artist: String(it.artistName ?? it.artist?.name ?? 'Artist'),
+                artistId: artistId ? String(artistId) : undefined,
                 description: (it.type || '').toString(),
                 thumbnail: thumb || FALLBACK_THUMBNAIL,
                 isLocked: Boolean(it.locked),
@@ -161,6 +166,15 @@ export default function HomeScreen({ navigation }: any) {
     navigation.navigate('Artist', { artistId });
   };
 
+  const artistNameToId = useMemo(() => {
+    const map = new Map<string, string>();
+    [...featuredArtists, ...trendingArtists].forEach((a) => {
+      const key = (a.name || '').toString().trim().toLowerCase();
+      if (key && a.id) map.set(key, a.id);
+    });
+    return map;
+  }, [featuredArtists, trendingArtists]);
+
   const onPressContent = (item: ContentCard) => {
     if (item.isLocked) {
       navigation.navigate('ArtistSubscription', {
@@ -174,6 +188,15 @@ export default function HomeScreen({ navigation }: any) {
         },
         coverImage: item.thumbnail,
       });
+      return;
+    }
+
+    const resolvedArtistId =
+      (item.artistId || '').toString() ||
+      artistNameToId.get((item.artist || '').toString().trim().toLowerCase()) ||
+      '';
+    if (resolvedArtistId) {
+      navigation.navigate('Artist', { artistId: resolvedArtistId, contentId: item.id });
       return;
     }
 

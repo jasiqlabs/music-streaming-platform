@@ -68,6 +68,7 @@ export default function ArtistScreen({ navigation, route }: any) {
   };
 
   const artistId = (route?.params?.artistId ?? '').toString();
+  const initialMediaId = (route?.params?.contentId ?? '').toString();
 
   useEffect(() => {
     let mounted = true;
@@ -127,6 +128,35 @@ export default function ArtistScreen({ navigation, route }: any) {
       mounted = false;
     };
   }, [artistId]);
+
+  useEffect(() => {
+    if (!artist) return;
+    if (!initialMediaId) return;
+    if (!songs.length) return;
+
+    const match = songs.find((s) => s.id === initialMediaId);
+    if (!match) return;
+
+    if (match.mediaType === 'audio') setActiveTab('Audio');
+    if (match.mediaType === 'video') setActiveTab('Video');
+
+    const queue = songs
+      .filter((s) => Boolean(s.mediaUrl))
+      .map((s) => ({
+        id: s.id,
+        title: s.title,
+        artistName: s.artist,
+        mediaType: s.mediaType,
+        artworkUrl: s.thumbnail,
+        mediaUrl: s.mediaUrl,
+        isLocked: s.locked,
+      }));
+    const idx = queue.findIndex((q) => q.id === initialMediaId);
+    if (idx < 0) return;
+
+    playQueue(queue, idx).catch(() => undefined);
+    setCurrentSong(match);
+  }, [artist, initialMediaId, playQueue, songs]);
 
   const isUnlocked = Boolean(route?.params?.unlocked);
 

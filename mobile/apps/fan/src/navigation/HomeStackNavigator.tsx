@@ -59,7 +59,11 @@ export default function HomeStackNavigator() {
         component={SeeAllTrendingScreen}
         options={{ headerShown: true, title: 'Trending Artists' }}
       />
-      <Stack.Screen name="Artist" component={ArtistScreen} />
+      <Stack.Screen
+        name="Artist"
+        component={ArtistScreen}
+        options={{ animation: 'slide_from_right' }}
+      />
       <Stack.Screen name="ArtistSubscription" component={ArtistSubscriptionScreen} />
       <Stack.Screen name="ContentPlayer" component={ContentPlayerScreen} />
       <Stack.Screen name="SubscriptionFlow" component={SubscriptionFlowScreen} />
