@@ -154,6 +154,10 @@ export default function MediaPlayerOverlay({
     return null;
   }
 
+  if (currentItem.mediaType === 'video') {
+    return null;
+  }
+
   return (
     <View pointerEvents="box-none" style={styles.root}>
       <View style={[styles.miniWrap, { bottom: bottomOffset }]}>
