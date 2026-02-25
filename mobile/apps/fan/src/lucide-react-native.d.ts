@@ -33,6 +33,9 @@ declare module 'lucide-react-native' {
   export const Play: LucideIcon;
   export const Settings: LucideIcon;
   export const SkipForward: LucideIcon;
+  export const SkipBack: LucideIcon;
+  export const Maximize: LucideIcon;
+  export const Minimize: LucideIcon;
 
   export const AlertTriangle: LucideIcon;
   export const Crown: LucideIcon;

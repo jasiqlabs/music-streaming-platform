@@ -67,6 +67,9 @@ type MediaPlayerContextValue = {
   close: () => Promise<void>;
   setExpanded: (expanded: boolean) => void;
 
+  inlineVideoHostActive: boolean;
+  setInlineVideoHostActive: (active: boolean) => void;
+
   onVideoPlaybackStatusUpdate: (status: AVPlaybackStatus) => void;
 
   videoRef: React.RefObject<Video>;
@@ -95,6 +98,8 @@ export function useMediaPlayer() {
 
 export function MediaPlayerProvider({ children }: { children: ReactNode }) {
   const [state, setState] = useState<PlayerState>(EMPTY_STATE);
+
+  const [inlineVideoHostActive, setInlineVideoHostActive] = useState(false);
 
   const soundRef = useRef<SoundLike | null>(null);
   const videoRef = useRef<Video>(null);
@@ -336,8 +341,10 @@ export function MediaPlayerProvider({ children }: { children: ReactNode }) {
       const status = await snd.getStatusAsync();
       if (status.isLoaded && status.isPlaying) {
         await snd.pauseAsync();
+        setState((s) => ({ ...s, isPlaying: false }));
       } else {
         await snd.playAsync();
+        setState((s) => ({ ...s, isPlaying: true }));
       }
       return;
     }
@@ -347,8 +354,10 @@ export function MediaPlayerProvider({ children }: { children: ReactNode }) {
     const status = await v.getStatusAsync();
     if (status.isLoaded && status.isPlaying) {
       await v.pauseAsync();
+      setState((s) => ({ ...s, isPlaying: false }));
     } else {
       await v.playAsync();
+      setState((s) => ({ ...s, isPlaying: true }));
     }
   }, [currentItem]);
 
@@ -519,6 +528,9 @@ export function MediaPlayerProvider({ children }: { children: ReactNode }) {
       setVolume,
       close,
       setExpanded,
+
+      inlineVideoHostActive,
+      setInlineVideoHostActive,
       onVideoPlaybackStatusUpdate,
       videoRef,
     }),
@@ -526,6 +538,7 @@ export function MediaPlayerProvider({ children }: { children: ReactNode }) {
       close,
       currentItem,
       cycleRepeatMode,
+      inlineVideoHostActive,
       onVideoPlaybackStatusUpdate,
       playQueue,
       seekTo,
@@ -537,6 +550,7 @@ export function MediaPlayerProvider({ children }: { children: ReactNode }) {
       skipPrev,
       state,
       setVolume,
+      setInlineVideoHostActive,
       toggleShuffle,
       togglePlayPause,
     ]

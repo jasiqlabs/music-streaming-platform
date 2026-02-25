@@ -16,10 +16,12 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { useBottomTabBarHeight } from '@react-navigation/bottom-tabs';
 import { ArrowLeft, BadgeCheck, Lock, Pause, Play, Settings } from 'lucide-react-native';
 import { ResizeMode, Video } from 'expo-av';
+import { useIsFocused } from '@react-navigation/native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import SubscriptionExpiryScreen from './SubscriptionExpiryScreen';
 import { fetchArtistById, fetchArtistMedia, type ArtistDetail, type ArtistMediaItem } from '../services/artistService';
 import { useMediaPlayer } from '../providers/MediaPlayerProvider';
+import YouTubeVideoControlsOverlay from '../ui/YouTubeVideoControlsOverlay';
 
 type Song = {
   id: string;
@@ -46,8 +48,27 @@ const TABS: TabKey[] = ['All', 'Audio', 'Video'];
 
 export default function ArtistScreen({ navigation, route }: any) {
   const tabBarHeight = useBottomTabBarHeight();
+  const isFocused = useIsFocused();
 
-  const { playQueue, currentItem, state: playerState, videoRef, onVideoPlaybackStatusUpdate } = useMediaPlayer();
+  const {
+    playQueue,
+    currentItem,
+    state: playerState,
+    videoRef,
+    onVideoPlaybackStatusUpdate,
+    togglePlayPause,
+    seekTo,
+    setExpanded,
+    setInlineVideoHostActive,
+  } = useMediaPlayer();
+
+  useEffect(() => {
+    const isInlineVideo = isFocused && currentItem?.mediaType === 'video' && !playerState.isExpanded;
+    setInlineVideoHostActive(isInlineVideo);
+    return () => {
+      setInlineVideoHostActive(false);
+    };
+  }, [currentItem?.mediaType, isFocused, playerState.isExpanded, setInlineVideoHostActive]);
 
   const [activeTab, setActiveTab] = useState<TabKey>('All');
   const [isPlaying, setIsPlaying] = useState(false);
@@ -252,9 +273,23 @@ export default function ArtistScreen({ navigation, route }: any) {
                   style={styles.youtubeVideo}
                   source={{ uri: currentItem.mediaUrl }}
                   shouldPlay={playerState.isPlaying}
-                  useNativeControls
                   resizeMode={ResizeMode.CONTAIN}
+                  progressUpdateIntervalMillis={100}
                   onPlaybackStatusUpdate={onVideoPlaybackStatusUpdate}
+                />
+
+                <YouTubeVideoControlsOverlay
+                  isPlaying={playerState.isPlaying}
+                  positionMs={playerState.positionMs}
+                  durationMs={playerState.durationMs}
+                  onTogglePlay={() => {
+                    togglePlayPause().catch(() => undefined);
+                  }}
+                  onSeek={(pos) => {
+                    seekTo(pos).catch(() => undefined);
+                  }}
+                  isFullscreen={false}
+                  onToggleFullscreen={() => setExpanded(true)}
                 />
                 <LinearGradient
                   colors={['rgba(0,0,0,0.55)', 'rgba(0,0,0,0)']}

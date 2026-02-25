@@ -17,6 +17,7 @@ import Slider from '@react-native-community/slider';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { useMediaPlayer } from '../providers/MediaPlayerProvider';
+import YouTubeVideoControlsOverlay from './YouTubeVideoControlsOverlay';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 
@@ -40,6 +41,7 @@ export default function MediaPlayerOverlay({
     setVolume,
     close,
     setExpanded,
+    inlineVideoHostActive,
     onVideoPlaybackStatusUpdate,
     videoRef,
   } = useMediaPlayer();
@@ -116,9 +118,23 @@ export default function MediaPlayerOverlay({
             style={styles.video}
             source={{ uri: currentItem.mediaUrl }}
             shouldPlay={state.isPlaying}
-            useNativeControls
             resizeMode={ResizeMode.CONTAIN}
+            progressUpdateIntervalMillis={100}
             onPlaybackStatusUpdate={onVideoPlaybackStatusUpdate}
+          />
+
+          <YouTubeVideoControlsOverlay
+            isPlaying={state.isPlaying}
+            positionMs={state.positionMs}
+            durationMs={state.durationMs}
+            onTogglePlay={() => {
+              togglePlayPause().catch(() => undefined);
+            }}
+            onSeek={(pos) => {
+              seekTo(pos).catch(() => undefined);
+            }}
+            isFullscreen={true}
+            onToggleFullscreen={() => setExpanded(false)}
           />
 
           <View style={styles.videoMeta}>
@@ -132,6 +148,10 @@ export default function MediaPlayerOverlay({
         </View>
       </View>
     );
+  }
+
+  if (currentItem.mediaType === 'video' && inlineVideoHostActive) {
+    return null;
   }
 
   return (
