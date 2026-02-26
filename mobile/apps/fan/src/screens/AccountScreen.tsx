@@ -19,6 +19,7 @@ import { CreditCard, HelpCircle, LogOut, User } from 'lucide-react-native';
 import { userService, type AudioQualityPref, type Transaction } from '../services/userService';
 import { JWT_STORAGE_KEY } from '../services/api';
 import { resetToLogin } from '../navigation/rootNavigation';
+import { Colors } from '../theme';
 
 function PremiumBadge() {
   return (
@@ -278,8 +279,8 @@ export default function AccountScreen() {
           </TouchableOpacity>
 
           <TouchableOpacity style={styles.menuItem} onPress={handleLogout}>
-            <LogOut size={20} color="#FF6A00" />
-            <Text style={[styles.menuText, { color: '#FF6A00' }]}>Log Out</Text>
+            <LogOut size={20} color={Colors.accent} />
+            <Text style={[styles.menuText, { color: Colors.accent }]}>Log Out</Text>
           </TouchableOpacity>
         </View>
 
@@ -386,7 +387,7 @@ export default function AccountScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#000',
+    backgroundColor: Colors.background,
   },
   scrollView: {
     flex: 1,
@@ -527,15 +528,15 @@ const styles = StyleSheet.create({
     fontWeight: '500',
   },
   premiumBadge: {
-    backgroundColor: 'rgba(255,106,0,0.18)',
+    backgroundColor: 'rgba(255,181,8,0.20)',
     borderWidth: 1,
-    borderColor: 'rgba(255,106,0,0.45)',
+    borderColor: 'rgba(255,181,8,0.45)',
     borderRadius: 999,
     paddingHorizontal: 10,
     paddingVertical: 6,
   },
   premiumBadgeText: {
-    color: '#FF6A00',
+    color: Colors.accent,
     fontSize: 12,
     fontWeight: '800',
   },
@@ -566,14 +567,14 @@ const styles = StyleSheet.create({
   },
   primaryButton: {
     marginTop: 14,
-    backgroundColor: '#FF6A00',
+    backgroundColor: Colors.accent,
     borderRadius: 12,
     paddingVertical: 12,
     alignItems: 'center',
   },
   primaryButtonSmall: {
     flex: 1,
-    backgroundColor: '#FF6A00',
+    backgroundColor: Colors.accent,
     borderRadius: 12,
     paddingVertical: 12,
     alignItems: 'center',
@@ -661,7 +662,7 @@ const styles = StyleSheet.create({
 
   modalContainer: {
     flex: 1,
-    backgroundColor: '#000',
+    backgroundColor: Colors.background,
   },
   modalHeader: {
     paddingHorizontal: 18,
@@ -678,7 +679,7 @@ const styles = StyleSheet.create({
     fontWeight: '800',
   },
   modalClose: {
-    color: '#FF6A00',
+    color: Colors.accent,
     fontSize: 14,
     fontWeight: '800',
   },

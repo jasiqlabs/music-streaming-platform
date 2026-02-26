@@ -3,6 +3,7 @@ import React from 'react';
 import { Image, StyleSheet, View, Dimensions } from 'react-native';
 import { Shadow } from 'react-native-shadow-2';
 import { LinearGradient } from 'expo-linear-gradient'; // Ensure this is installed
+import { Colors } from '../theme';
 
 const { width } = Dimensions.get('window');
 
@@ -11,7 +12,7 @@ export default function SplashScreen() {
     <View style={styles.container}>
       {/* Cinematic Background Gradient */}
       <LinearGradient
-        colors={['#1a1a1a', '#000000']}
+        colors={['#00103C', '#000000']}
         style={StyleSheet.absoluteFill}
       />
 
@@ -41,7 +42,7 @@ export default function SplashScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#000',
+    backgroundColor: Colors.background,
     alignItems: 'center',
     justifyContent: 'center',
   },

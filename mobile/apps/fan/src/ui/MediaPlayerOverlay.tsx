@@ -18,6 +18,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { useMediaPlayer } from '../providers/MediaPlayerProvider';
 import YouTubeVideoControlsOverlay from './YouTubeVideoControlsOverlay';
+import { Colors } from '../theme';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 
@@ -27,6 +28,8 @@ export default function MediaPlayerOverlay({
   bottomSafeAreaPadding?: number;
 }) {
   const insets = useSafeAreaInsets();
+
+  const [expandedVideoAspectRatio, setExpandedVideoAspectRatio] = useState(16 / 9);
 
   const {
     state,
@@ -84,15 +87,19 @@ export default function MediaPlayerOverlay({
   if (!isVisible || !currentItem) return null;
 
   if (currentItem.mediaType === 'video' && state.isExpanded) {
-    const containerWidth = Math.min(SCREEN_WIDTH, 720);
     return (
       <View pointerEvents="box-none" style={styles.root}>
+        <LinearGradient
+          colors={Colors.primaryGradient}
+          start={{ x: 0, y: 0 }}
+          end={{ x: 1, y: 1 }}
+          style={StyleSheet.absoluteFill}
+        />
         <View
           style={[
             styles.videoContainer,
             {
               paddingTop: insets.top + 8,
-              width: containerWidth,
             },
           ]}
         >
@@ -113,29 +120,44 @@ export default function MediaPlayerOverlay({
             </Pressable>
           </View>
 
-          <Video
-            ref={videoRef}
-            style={styles.video}
-            source={{ uri: currentItem.mediaUrl }}
-            shouldPlay={state.isPlaying}
-            resizeMode={ResizeMode.CONTAIN}
-            progressUpdateIntervalMillis={100}
-            onPlaybackStatusUpdate={onVideoPlaybackStatusUpdate}
-          />
+          <View style={[styles.videoFrame, { aspectRatio: expandedVideoAspectRatio }]}>
+            <Video
+              key={`${currentItem.mediaUrl}-${expandedVideoAspectRatio}`}
+              ref={videoRef}
+              style={{ width: '100%', height: undefined, aspectRatio: expandedVideoAspectRatio }}
+              source={{ uri: currentItem.mediaUrl }}
+              shouldPlay={state.isPlaying}
+              resizeMode={ResizeMode.CONTAIN}
+              useNativeControls={false}
+              progressUpdateIntervalMillis={100}
+              onPlaybackStatusUpdate={onVideoPlaybackStatusUpdate}
+              onReadyForDisplay={(e) => {
+                const size = (e as any)?.naturalSize;
+                const w = Number(size?.width ?? 0);
+                const h = Number(size?.height ?? 0);
+                if (w > 0 && h > 0) {
+                  const ratio = w / h;
+                  if (Number.isFinite(ratio) && ratio > 0) setExpandedVideoAspectRatio(ratio);
+                  return;
+                }
+                setExpandedVideoAspectRatio(16 / 9);
+              }}
+            />
 
-          <YouTubeVideoControlsOverlay
-            isPlaying={state.isPlaying}
-            positionMs={state.positionMs}
-            durationMs={state.durationMs}
-            onTogglePlay={() => {
-              togglePlayPause().catch(() => undefined);
-            }}
-            onSeek={(pos) => {
-              seekTo(pos).catch(() => undefined);
-            }}
-            isFullscreen={true}
-            onToggleFullscreen={() => setExpanded(false)}
-          />
+            <YouTubeVideoControlsOverlay
+              isPlaying={state.isPlaying}
+              positionMs={state.positionMs}
+              durationMs={state.durationMs}
+              onTogglePlay={() => {
+                togglePlayPause().catch(() => undefined);
+              }}
+              onSeek={(pos) => {
+                seekTo(pos).catch(() => undefined);
+              }}
+              isFullscreen={true}
+              onToggleFullscreen={() => setExpanded(false)}
+            />
+          </View>
 
           <View style={styles.videoMeta}>
             <Text style={styles.videoTitle} numberOfLines={1}>
@@ -291,13 +313,13 @@ const styles = StyleSheet.create({
   },
 
   videoContainer: {
-    position: 'absolute',
-    top: 0,
-    left: 0,
-    right: 0,
+    flex: 1,
+    width: '100%',
+    maxWidth: 720,
     alignSelf: 'center',
-    height: 290,
-    backgroundColor: '#000',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: 'transparent',
   },
   videoTopGradient: {
     position: 'absolute',
@@ -331,10 +353,10 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     fontSize: 13,
   },
-  video: {
+  videoFrame: {
     width: '100%',
-    height: 220,
-    marginTop: 48,
+    backgroundColor: Colors.backgroundAlt,
+    alignSelf: 'center',
   },
   videoMeta: {
     paddingHorizontal: 14,

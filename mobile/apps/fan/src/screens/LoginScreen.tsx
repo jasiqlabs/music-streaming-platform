@@ -117,7 +117,7 @@ export default function LoginScreen({ navigation }: Props) {
 
             <Pressable onPress={onSubmit} disabled={!canSubmit}>
               <LinearGradient
-                colors={['#ff7a18', '#ff3d00']}
+                colors={['#FFB608', '#FF2553']}
                 style={styles.button}
               >
                 {isLoggingIn ? (

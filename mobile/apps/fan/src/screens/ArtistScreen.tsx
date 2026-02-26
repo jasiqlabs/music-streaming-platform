@@ -5,6 +5,7 @@ import {
   FlatList,
   Image,
   Pressable,
+  StatusBar,
   StyleSheet,
   Text,
   View,
@@ -22,6 +23,7 @@ import SubscriptionExpiryScreen from './SubscriptionExpiryScreen';
 import { fetchArtistById, fetchArtistMedia, type ArtistDetail, type ArtistMediaItem } from '../services/artistService';
 import { useMediaPlayer } from '../providers/MediaPlayerProvider';
 import YouTubeVideoControlsOverlay from '../ui/YouTubeVideoControlsOverlay';
+import { Colors } from '../theme';
 
 type Song = {
   id: string;
@@ -73,6 +75,8 @@ export default function ArtistScreen({ navigation, route }: any) {
   const [activeTab, setActiveTab] = useState<TabKey>('All');
   const [isPlaying, setIsPlaying] = useState(false);
   const [currentSong, setCurrentSong] = useState<Song | null>(null);
+
+  const [inlineVideoAspectRatio, setInlineVideoAspectRatio] = useState(16 / 9);
 
   const [artist, setArtist] = useState<Artist | null>(null);
   const [songs, setSongs] = useState<Song[]>([]);
@@ -231,7 +235,14 @@ export default function ArtistScreen({ navigation, route }: any) {
   }, [songs, currentSong]);
 
   return (
-    <SafeAreaView style={styles.container} edges={['top']}>
+    <LinearGradient
+      colors={Colors.primaryGradient}
+      start={{ x: 0, y: 0 }}
+      end={{ x: 1, y: 1 }}
+      style={styles.gradientBackground}
+    >
+      <StatusBar barStyle="light-content" />
+    <SafeAreaView style={styles.safeArea} edges={['top']}>
       <View style={styles.container}>
         {/* Debug Toggle */}
         {showDebugToggle && (
@@ -258,7 +269,7 @@ export default function ArtistScreen({ navigation, route }: any) {
 
         {loading ? (
           <View style={styles.loadingWrap}>
-            <ActivityIndicator color="#FF6A00" />
+            <ActivityIndicator color={Colors.accent} />
           </View>
         ) : error || !artist ? (
           <View style={styles.loadingWrap}>
@@ -266,56 +277,72 @@ export default function ArtistScreen({ navigation, route }: any) {
           </View>
         ) : (
           <>
-            {currentItem?.mediaType === 'video' ? (
-              <View style={styles.youtubeVideoWrap}>
-                <Video
-                  ref={videoRef}
-                  style={styles.youtubeVideo}
-                  source={{ uri: currentItem.mediaUrl }}
-                  shouldPlay={playerState.isPlaying}
-                  resizeMode={ResizeMode.CONTAIN}
-                  progressUpdateIntervalMillis={100}
-                  onPlaybackStatusUpdate={onVideoPlaybackStatusUpdate}
-                />
-
-                <YouTubeVideoControlsOverlay
-                  isPlaying={playerState.isPlaying}
-                  positionMs={playerState.positionMs}
-                  durationMs={playerState.durationMs}
-                  onTogglePlay={() => {
-                    togglePlayPause().catch(() => undefined);
-                  }}
-                  onSeek={(pos) => {
-                    seekTo(pos).catch(() => undefined);
-                  }}
-                  isFullscreen={false}
-                  onToggleFullscreen={() => setExpanded(true)}
-                />
-                <LinearGradient
-                  colors={['rgba(0,0,0,0.55)', 'rgba(0,0,0,0)']}
-                  style={styles.youtubeVideoTopGradient}
-                />
-                <View style={styles.youtubeVideoTopRow}>
-                  <Pressable onPress={() => navigation.goBack()} style={styles.backBtn}>
-                    <ArrowLeft color="#fff" size={22} />
-                  </Pressable>
-                </View>
-              </View>
-            ) : (
-              <ArtistHeader
-                coverImage={artist.coverImage}
-                name={artist.name}
-                verified={artist.verified}
-                subscribers={artist.subscribers}
-                onBack={() => navigation.goBack()}
-              />
-            )}
-
-            <GlassTabs active={activeTab} onChange={setActiveTab} />
-
             <FlatList
               data={filteredSongs}
               keyExtractor={(item) => item.id}
+              ListHeaderComponent={
+                <>
+                  {currentItem?.mediaType === 'video' ? (
+                    <View style={[styles.youtubeVideoWrap, { aspectRatio: inlineVideoAspectRatio }]}>
+                      <Video
+                        key={`${currentItem.mediaUrl}-${inlineVideoAspectRatio}`}
+                        ref={videoRef}
+                        style={{ width: '100%', height: undefined, aspectRatio: inlineVideoAspectRatio }}
+                        source={{ uri: currentItem.mediaUrl }}
+                        shouldPlay={playerState.isPlaying}
+                        resizeMode={ResizeMode.CONTAIN}
+                        useNativeControls={false}
+                        progressUpdateIntervalMillis={100}
+                        onPlaybackStatusUpdate={onVideoPlaybackStatusUpdate}
+                        onReadyForDisplay={(e) => {
+                          const size = (e as any)?.naturalSize;
+                          const w = Number(size?.width ?? 0);
+                          const h = Number(size?.height ?? 0);
+                          if (w > 0 && h > 0) {
+                            const ratio = w / h;
+                            if (Number.isFinite(ratio) && ratio > 0) setInlineVideoAspectRatio(ratio);
+                            return;
+                          }
+                          setInlineVideoAspectRatio(16 / 9);
+                        }}
+                      />
+
+                      <YouTubeVideoControlsOverlay
+                        isPlaying={playerState.isPlaying}
+                        positionMs={playerState.positionMs}
+                        durationMs={playerState.durationMs}
+                        onTogglePlay={() => {
+                          togglePlayPause().catch(() => undefined);
+                        }}
+                        onSeek={(pos) => {
+                          seekTo(pos).catch(() => undefined);
+                        }}
+                        isFullscreen={false}
+                        onToggleFullscreen={() => setExpanded(true)}
+                      />
+                      <LinearGradient
+                        colors={['rgba(0,0,0,0.55)', 'rgba(0,0,0,0)']}
+                        style={styles.youtubeVideoTopGradient}
+                      />
+                      <View style={styles.youtubeVideoTopRow}>
+                        <Pressable onPress={() => navigation.goBack()} style={styles.backBtn}>
+                          <ArrowLeft color="#fff" size={22} />
+                        </Pressable>
+                      </View>
+                    </View>
+                  ) : (
+                    <ArtistHeader
+                      coverImage={artist.coverImage}
+                      name={artist.name}
+                      verified={artist.verified}
+                      subscribers={artist.subscribers}
+                      onBack={() => navigation.goBack()}
+                    />
+                  )}
+
+                  <GlassTabs active={activeTab} onChange={setActiveTab} />
+                </>
+              }
               contentContainerStyle={{
                 paddingBottom: tabBarHeight + 140,
               }}
@@ -331,6 +358,7 @@ export default function ArtistScreen({ navigation, route }: any) {
         )}
       </View>
     </SafeAreaView>
+    </LinearGradient>
   );
 }
 
@@ -477,17 +505,23 @@ function MiniPlayerBar({
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#000',
+    backgroundColor: 'transparent',
+  },
+  gradientBackground: {
+    flex: 1,
+  },
+  safeArea: {
+    flex: 1,
+    backgroundColor: 'transparent',
   },
 
   youtubeVideoWrap: {
-    height: 240,
-    backgroundColor: '#000',
+    width: '100%',
+    backgroundColor: Colors.backgroundAlt,
+    alignSelf: 'center',
   },
   youtubeVideo: {
-    width: '100%',
-    height: '100%',
-    backgroundColor: '#000',
+    // unused; inline style on <Video />
   },
   youtubeVideoTopGradient: {
     position: 'absolute',
@@ -594,7 +628,8 @@ const styles = StyleSheet.create({
     borderRadius: 18,
     overflow: 'hidden',
     borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.08)',
+    borderColor: 'rgba(255,255,255,0.10)',
+    backgroundColor: 'rgba(255,255,255,0.05)',
   },
   tabsRow: {
     flexDirection: 'row',
@@ -632,8 +667,8 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.07)',
-    backgroundColor: 'rgba(20,20,20,0.35)',
+    borderColor: 'rgba(255,255,255,0.10)',
+    backgroundColor: 'rgba(255,255,255,0.05)',
   },
   songThumb: {
     width: 58,
@@ -762,8 +797,8 @@ const styles = StyleSheet.create({
     borderColor: 'rgba(255, 255, 255, 0.2)',
   },
   debugButtonActive: {
-    backgroundColor: 'rgba(255, 106, 0, 0.2)',
-    borderColor: '#FF6A00',
+    backgroundColor: 'rgba(255, 182, 8, 0.25)',
+    borderColor: Colors.accent,
   },
   debugButtonText: {
     color: '#fff',

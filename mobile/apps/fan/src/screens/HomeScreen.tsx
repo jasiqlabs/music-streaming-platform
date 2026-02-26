@@ -6,6 +6,7 @@ import {
   Pressable,
   RefreshControl,
   ScrollView,
+  StatusBar,
   StyleSheet,
   Text,
   TouchableOpacity,
@@ -19,6 +20,7 @@ import { useBottomTabBarHeight } from '@react-navigation/bottom-tabs';
 import { BadgeCheck, Lock, Play, Search } from 'lucide-react-native';
 import { apiV1 } from '../services/api';
 import { fetchVerifiedArtists, type ArtistListItem } from '../services/artistService';
+import { Colors } from '../theme';
 
 const { width } = Dimensions.get('window');
 
@@ -279,20 +281,35 @@ export default function HomeScreen({ navigation }: any) {
 
   if (loading)
     return (
-      <View style={styles.loading}>
-        <ActivityIndicator color="#FF6A00" />
-      </View>
+      <LinearGradient
+        colors={Colors.primaryGradient}
+        start={{ x: 0, y: 0 }}
+        end={{ x: 1, y: 1 }}
+        style={styles.gradientBackground}
+      >
+        <StatusBar barStyle="light-content" />
+        <View style={styles.loading}>
+          <ActivityIndicator color={Colors.accent} />
+        </View>
+      </LinearGradient>
     );
 
   return (
-    <SafeAreaView style={styles.container}>
-      <View style={styles.pageWrap}>
+    <LinearGradient
+      colors={Colors.primaryGradient}
+      start={{ x: 0, y: 0 }}
+      end={{ x: 1, y: 1 }}
+      style={styles.gradientBackground}
+    >
+      <StatusBar barStyle="light-content" />
+      <SafeAreaView style={styles.safeArea}>
+        <View style={styles.pageWrap}>
       <ScrollView
         showsVerticalScrollIndicator={false}
         contentContainerStyle={{ paddingBottom: tabBarHeight + 220 }}
         refreshControl={
           <RefreshControl
-            tintColor="#FF6A00"
+            tintColor={Colors.accent}
             refreshing={refreshing}
             onRefresh={async () => {
               setRefreshing(true);
@@ -336,7 +353,7 @@ export default function HomeScreen({ navigation }: any) {
         <Text style={styles.sectionTitleTop}>Featured Artists</Text>
         {artistsLoading ? (
           <View style={styles.sectionLoadingRow}>
-            <ActivityIndicator color="#FF6A00" />
+            <ActivityIndicator color={Colors.accent} />
           </View>
         ) : artistsError ? (
           <View style={styles.sectionErrorWrap}>
@@ -397,7 +414,7 @@ export default function HomeScreen({ navigation }: any) {
         </View>
         {artistsLoading ? (
           <View style={styles.sectionLoadingRow}>
-            <ActivityIndicator color="#FF6A00" />
+            <ActivityIndicator color={Colors.accent} />
           </View>
         ) : artistsError ? (
           <View style={styles.sectionEmptyWrap}>
@@ -432,7 +449,8 @@ export default function HomeScreen({ navigation }: any) {
         />
       </ScrollView>
       </View>
-    </SafeAreaView>
+      </SafeAreaView>
+    </LinearGradient>
   );
 }
 
@@ -441,7 +459,13 @@ export default function HomeScreen({ navigation }: any) {
 /* ================================= */
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#000' },
+  gradientBackground: {
+    flex: 1,
+  },
+  safeArea: {
+    flex: 1,
+    backgroundColor: 'transparent',
+  },
   pageWrap: {
     flex: 1,
     minHeight: '100%',
@@ -451,7 +475,7 @@ const styles = StyleSheet.create({
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
-    backgroundColor: '#000',
+    backgroundColor: 'transparent',
   },
 
   header: {
@@ -537,16 +561,16 @@ const styles = StyleSheet.create({
   subscriptionTag: {
     marginTop: 8,
     alignSelf: 'flex-start',
-    backgroundColor: 'rgba(255,122,24,0.20)',
+    backgroundColor: 'rgba(255,181,8,0.20)',
     borderWidth: 1,
-    borderColor: 'rgba(255,122,24,0.35)',
+    borderColor: 'rgba(255,181,8,0.45)',
     paddingHorizontal: 10,
     paddingVertical: 4,
     borderRadius: 10,
   },
 
   subscriptionTagText: {
-    color: '#FF7A18',
+    color: Colors.accent,
     fontSize: 11,
     fontWeight: '800',
   },
@@ -616,16 +640,16 @@ const styles = StyleSheet.create({
 
   retryBtn: {
     alignSelf: 'flex-start',
-    backgroundColor: 'rgba(255,106,0,0.16)',
+    backgroundColor: 'rgba(255,181,8,0.18)',
     borderWidth: 1,
-    borderColor: 'rgba(255,106,0,0.35)',
+    borderColor: 'rgba(255,181,8,0.45)',
     paddingHorizontal: 12,
     paddingVertical: 8,
     borderRadius: 12,
   },
 
   retryBtnText: {
-    color: '#FF6A00',
+    color: Colors.accent,
     fontSize: 12,
     fontWeight: '800',
   },
