@@ -1,10 +1,10 @@
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import {
-  Animated,
   ActivityIndicator,
   FlatList,
   Image,
   Pressable,
+  ScrollView,
   StatusBar,
   StyleSheet,
   Text,
@@ -15,10 +15,10 @@ import {
 import { BlurView } from 'expo-blur';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useBottomTabBarHeight } from '@react-navigation/bottom-tabs';
-import { ArrowLeft, BadgeCheck, Lock, Pause, Play, Settings } from 'lucide-react-native';
+import { ArrowLeft, BadgeCheck, Lock, Settings } from 'lucide-react-native';
 import { ResizeMode, Video } from 'expo-av';
 import { useIsFocused } from '@react-navigation/native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import SubscriptionExpiryScreen from './SubscriptionExpiryScreen';
 import { fetchArtistById, fetchArtistMedia, type ArtistDetail, type ArtistMediaItem } from '../services/artistService';
 import { useMediaPlayer } from '../providers/MediaPlayerProvider';
@@ -41,6 +41,7 @@ type Artist = {
   name: string;
   verified: boolean;
   subscribers: string;
+  profileImage: string;
   coverImage: string;
 };
 
@@ -48,9 +49,13 @@ type TabKey = 'All' | 'Audio' | 'Video';
 
 const TABS: TabKey[] = ['All', 'Audio', 'Video'];
 
+type ChannelTabKey = 'Home' | 'Videos' | 'Playlists' | 'Community';
+const CHANNEL_TABS: ChannelTabKey[] = ['Home', 'Videos', 'Playlists', 'Community'];
+
 export default function ArtistScreen({ navigation, route }: any) {
   const tabBarHeight = useBottomTabBarHeight();
   const isFocused = useIsFocused();
+  const insets = useSafeAreaInsets();
 
   const {
     playQueue,
@@ -73,7 +78,7 @@ export default function ArtistScreen({ navigation, route }: any) {
   }, [currentItem?.mediaType, isFocused, playerState.isExpanded, setInlineVideoHostActive]);
 
   const [activeTab, setActiveTab] = useState<TabKey>('All');
-  const [isPlaying, setIsPlaying] = useState(false);
+  const [activeChannelTab, setActiveChannelTab] = useState<ChannelTabKey>('Home');
   const [currentSong, setCurrentSong] = useState<Song | null>(null);
 
   const [inlineVideoAspectRatio, setInlineVideoAspectRatio] = useState(16 / 9);
@@ -121,7 +126,8 @@ export default function ArtistScreen({ navigation, route }: any) {
           id: a.id,
           name: a.name,
           verified: a.isVerified,
-          subscribers: a.genre ? a.genre : 'Artist',
+          subscribers: deriveSubscribersLabel(a.id),
+          profileImage: a.profileImageUrl,
           coverImage: a.coverImageUrl,
         };
 
@@ -191,6 +197,14 @@ export default function ArtistScreen({ navigation, route }: any) {
     if (activeTab === 'Audio') return baseSongs.filter((s) => s.mediaType === 'audio');
     return baseSongs.filter((s) => s.mediaType === 'video');
   }, [activeTab, isUnlocked, songs]);
+
+  const channelContent = useMemo(() => {
+    if (activeChannelTab === 'Playlists') return [];
+    if (activeChannelTab === 'Community') return [];
+    return filteredSongs;
+  }, [activeChannelTab, filteredSongs]);
+
+  const useGrid = activeTab === 'Video';
 
   // Disable audio playback when subscription is expired
   const handleSongPress = (song: Song) => {
@@ -278,79 +292,75 @@ export default function ArtistScreen({ navigation, route }: any) {
         ) : (
           <>
             <FlatList
-              data={filteredSongs}
+              key={useGrid ? 'grid' : 'list'}
+              numColumns={useGrid ? 2 : 1}
+              data={channelContent}
               keyExtractor={(item) => item.id}
               ListHeaderComponent={
                 <>
                   {currentItem?.mediaType === 'video' ? (
-                    <View style={[styles.youtubeVideoWrap, { aspectRatio: inlineVideoAspectRatio }]}>
-                      <Video
-                        key={`${currentItem.mediaUrl}-${inlineVideoAspectRatio}`}
-                        ref={videoRef}
-                        style={{ width: '100%', height: undefined, aspectRatio: inlineVideoAspectRatio }}
-                        source={{ uri: currentItem.mediaUrl }}
-                        shouldPlay={playerState.isPlaying}
-                        resizeMode={ResizeMode.CONTAIN}
-                        useNativeControls={false}
-                        progressUpdateIntervalMillis={100}
-                        onPlaybackStatusUpdate={onVideoPlaybackStatusUpdate}
-                        onReadyForDisplay={(e) => {
-                          const size = (e as any)?.naturalSize;
-                          const w = Number(size?.width ?? 0);
-                          const h = Number(size?.height ?? 0);
-                          if (w > 0 && h > 0) {
-                            const ratio = w / h;
-                            if (Number.isFinite(ratio) && ratio > 0) setInlineVideoAspectRatio(ratio);
-                            return;
-                          }
-                          setInlineVideoAspectRatio(16 / 9);
-                        }}
-                      />
-
-                      <YouTubeVideoControlsOverlay
-                        isPlaying={playerState.isPlaying}
-                        positionMs={playerState.positionMs}
-                        durationMs={playerState.durationMs}
-                        onTogglePlay={() => {
-                          togglePlayPause().catch(() => undefined);
-                        }}
-                        onSeek={(pos) => {
-                          seekTo(pos).catch(() => undefined);
-                        }}
-                        isFullscreen={false}
-                        onToggleFullscreen={() => setExpanded(true)}
-                      />
-                      <LinearGradient
-                        colors={['rgba(0,0,0,0.55)', 'rgba(0,0,0,0)']}
-                        style={styles.youtubeVideoTopGradient}
-                      />
-                      <View style={styles.youtubeVideoTopRow}>
-                        <Pressable onPress={() => navigation.goBack()} style={styles.backBtn}>
-                          <ArrowLeft color="#fff" size={22} />
-                        </Pressable>
-                      </View>
-                    </View>
-                  ) : (
-                    <ArtistHeader
-                      coverImage={artist.coverImage}
-                      name={artist.name}
-                      verified={artist.verified}
-                      subscribers={artist.subscribers}
+                    <InlineVideoPlayer
+                      mediaUrl={currentItem.mediaUrl}
+                      aspectRatio={inlineVideoAspectRatio}
+                      onAspectRatio={(r) => setInlineVideoAspectRatio(r)}
+                      videoRef={videoRef}
+                      shouldPlay={playerState.isPlaying}
+                      positionMs={playerState.positionMs}
+                      durationMs={playerState.durationMs}
+                      onPlaybackStatusUpdate={onVideoPlaybackStatusUpdate}
+                      onTogglePlay={() => togglePlayPause().catch(() => undefined)}
+                      onSeek={(pos) => seekTo(pos).catch(() => undefined)}
+                      onToggleFullscreen={() => setExpanded(true)}
                       onBack={() => navigation.goBack()}
+                      topInset={insets.top}
                     />
-                  )}
+                  ) : null}
 
-                  <GlassTabs active={activeTab} onChange={setActiveTab} />
+                  <ProfileHeaderSection
+                    bannerUrl={artist.coverImage}
+                    avatarUrl={artist.profileImage || artist.coverImage}
+                    name={artist.name}
+                    verified={artist.verified}
+                    subscribersLabel={artist.subscribers}
+                    onBack={() => navigation.goBack()}
+                    onSubscribe={() => navigation.navigate('SubscriptionFlow')}
+                    onJoin={() => navigation.navigate('SubscriptionFlow')}
+                  />
+
+                  <ChannelNavTabs
+                    active={activeChannelTab}
+                    onChange={(k) => {
+                      setActiveChannelTab(k);
+                      if (k === 'Home') setActiveTab('All');
+                      if (k === 'Videos') setActiveTab('Video');
+                    }}
+                  />
+
+                  <MediaFilterPills active={activeTab} onChange={setActiveTab} />
                 </>
               }
               contentContainerStyle={{
                 paddingBottom: tabBarHeight + 140,
               }}
-              renderItem={({ item }) => <SongRow song={item} onPress={() => handleSongPress(item)} />}
+              columnWrapperStyle={useGrid ? styles.gridRow : undefined}
+              renderItem={({ item, index }) => (
+                <MediaCard
+                  item={item}
+                  index={index}
+                  isGrid={useGrid}
+                  onPress={() => handleSongPress(item)}
+                />
+              )}
               showsVerticalScrollIndicator={false}
               ListEmptyComponent={
                 <View style={styles.loadingWrap}>
-                  <Text style={styles.emptyText}>No uploads yet.</Text>
+                  <Text style={styles.emptyText}>
+                    {activeChannelTab === 'Playlists'
+                      ? 'No playlists yet.'
+                      : activeChannelTab === 'Community'
+                        ? 'No community posts yet.'
+                        : 'No uploads yet.'}
+                  </Text>
                 </View>
               }
             />
@@ -362,144 +372,281 @@ export default function ArtistScreen({ navigation, route }: any) {
   );
 }
 
-function ArtistHeader({
-  coverImage,
-  name,
-  verified,
-  subscribers,
+function InlineVideoPlayer({
+  mediaUrl,
+  aspectRatio,
+  onAspectRatio,
+  videoRef,
+  shouldPlay,
+  positionMs,
+  durationMs,
+  onPlaybackStatusUpdate,
+  onTogglePlay,
+  onSeek,
+  onToggleFullscreen,
   onBack,
+  topInset,
 }: {
-  coverImage: string;
-  name: string;
-  verified: boolean;
-  subscribers: string;
+  mediaUrl: string;
+  aspectRatio: number;
+  onAspectRatio: (r: number) => void;
+  videoRef: any;
+  shouldPlay: boolean;
+  positionMs: number;
+  durationMs: number;
+  onPlaybackStatusUpdate: (st: any) => void;
+  onTogglePlay: () => void;
+  onSeek: (pos: number) => void;
+  onToggleFullscreen: () => void;
   onBack: () => void;
+  topInset: number;
 }) {
   return (
-    <View style={styles.headerWrap}>
-      <Image source={{ uri: coverImage }} style={styles.headerImg} />
-      <LinearGradient
-        colors={['rgba(0,0,0,0.05)', 'rgba(0,0,0,0.9)']}
-        style={styles.headerGradient}
+    <View style={[styles.youtubeVideoWrap, { aspectRatio }]}>
+      <Video
+        key={`${mediaUrl}-${aspectRatio}`}
+        ref={videoRef}
+        style={{ width: '100%', height: undefined, aspectRatio }}
+        source={{ uri: mediaUrl }}
+        shouldPlay={shouldPlay}
+        resizeMode={ResizeMode.CONTAIN}
+        useNativeControls={false}
+        progressUpdateIntervalMillis={100}
+        onPlaybackStatusUpdate={onPlaybackStatusUpdate}
+        onReadyForDisplay={(e) => {
+          const size = (e as any)?.naturalSize;
+          const w = Number(size?.width ?? 0);
+          const h = Number(size?.height ?? 0);
+          if (w > 0 && h > 0) {
+            const ratio = w / h;
+            if (Number.isFinite(ratio) && ratio > 0) onAspectRatio(ratio);
+            return;
+          }
+          onAspectRatio(16 / 9);
+        }}
       />
 
-      <View style={styles.headerTopRow}>
+      <YouTubeVideoControlsOverlay
+        isPlaying={shouldPlay}
+        positionMs={positionMs}
+        durationMs={durationMs}
+        onTogglePlay={onTogglePlay}
+        onSeek={onSeek}
+        isFullscreen={false}
+        onToggleFullscreen={onToggleFullscreen}
+      />
+
+      <LinearGradient colors={['rgba(0,0,0,0.55)', 'rgba(0,0,0,0)']} style={styles.youtubeVideoTopGradient} />
+      <View style={[styles.youtubeVideoTopRow, { paddingTop: Math.max(10, topInset + 6) }]}>
         <Pressable onPress={onBack} style={styles.backBtn}>
           <ArrowLeft color="#fff" size={22} />
         </Pressable>
       </View>
+    </View>
+  );
+}
 
-      <BlurView intensity={28} tint="dark" style={styles.headerGlass}>
-        <View style={styles.headerTextRow}>
-          <Text style={styles.artistName}>{name}</Text>
+function ProfileHeaderSection({
+  bannerUrl,
+  avatarUrl,
+  name,
+  verified,
+  subscribersLabel,
+  onBack,
+  onSubscribe,
+  onJoin,
+}: {
+  bannerUrl: string;
+  avatarUrl: string;
+  name: string;
+  verified: boolean;
+  subscribersLabel: string;
+  onBack: () => void;
+  onSubscribe: () => void;
+  onJoin: () => void;
+}) {
+  return (
+    <View style={styles.profileWrap}>
+      <View style={styles.bannerWrap}>
+        <Image source={{ uri: bannerUrl }} style={styles.bannerImg} />
+        <LinearGradient colors={['rgba(0,0,0,0.08)', 'rgba(0,0,0,0.75)']} style={styles.bannerGradient} />
+        <View style={styles.bannerTopRow}>
+          <Pressable onPress={onBack} style={styles.backBtn}>
+            <ArrowLeft color="#fff" size={22} />
+          </Pressable>
+        </View>
+      </View>
+
+      <View style={styles.avatarRow}>
+        <View style={styles.avatarWrap}>
+          <Image source={{ uri: avatarUrl }} style={styles.avatarImg} />
+        </View>
+      </View>
+
+      <View style={styles.profileMeta}>
+        <View style={styles.nameRow}>
+          <Text style={styles.profileName} numberOfLines={1}>
+            {name}
+          </Text>
           {verified ? (
             <View style={styles.verifiedBadge}>
               <BadgeCheck color="#4AA3FF" fill="#4AA3FF" size={18} />
             </View>
           ) : null}
         </View>
-        <Text style={styles.subscribers}>{subscribers}</Text>
-      </BlurView>
+        <Text style={styles.profileSubs}>{subscribersLabel}</Text>
+
+        <View style={styles.actionsRow}>
+          <Pressable onPress={onSubscribe} style={styles.subscribeBtn}>
+            <Text style={styles.subscribeBtnText}>Subscribe</Text>
+          </Pressable>
+          <Pressable onPress={onJoin} style={styles.joinBtn}>
+            <Text style={styles.joinBtnText}>Join</Text>
+          </Pressable>
+        </View>
+      </View>
     </View>
   );
 }
 
-function GlassTabs({ active, onChange }: { active: TabKey; onChange: (k: TabKey) => void }) {
-  const underlineX = useRef(new Animated.Value(0)).current;
-  const tabWidth = 120;
-
-  useEffect(() => {
-    const index = TABS.indexOf(active);
-    Animated.timing(underlineX, {
-      toValue: index * tabWidth,
-      duration: 220,
-      useNativeDriver: true,
-    }).start();
-  }, [active, tabWidth, underlineX]);
-
+function ChannelNavTabs({ active, onChange }: { active: ChannelTabKey; onChange: (k: ChannelTabKey) => void }) {
   return (
-    <BlurView intensity={22} tint="dark" style={styles.tabsWrap}>
-      <View style={styles.tabsRow}>
-        {TABS.map((t) => (
-          <Pressable
-            key={t}
-            onPress={() => onChange(t)}
-            style={[styles.tabBtn, { width: tabWidth }]}
-          >
-            <Text style={[styles.tabText, active === t ? styles.tabTextActive : null]}>{t}</Text>
-          </Pressable>
-        ))}
-        <Animated.View style={[styles.tabUnderline, { width: 40, transform: [{ translateX: underlineX }] }]} />
-      </View>
+    <BlurView intensity={22} tint="dark" style={styles.channelTabsWrap}>
+      <ScrollView
+        horizontal
+        showsHorizontalScrollIndicator={false}
+        contentContainerStyle={styles.channelTabsContent}
+      >
+        {CHANNEL_TABS.map((t) => {
+          const isActive = active === t;
+          return (
+            <Pressable
+              key={t}
+              onPress={() => onChange(t)}
+              style={[styles.channelTabPill, isActive ? styles.channelTabPillActive : null]}
+            >
+              <Text style={[styles.channelTabText, isActive ? styles.channelTabTextActive : null]}>{t}</Text>
+            </Pressable>
+          );
+        })}
+      </ScrollView>
     </BlurView>
   );
 }
 
-function SongRow({ song, onPress }: { song: Song; onPress: () => void }) {
+function MediaFilterPills({ active, onChange }: { active: TabKey; onChange: (k: TabKey) => void }) {
   return (
-    <Pressable onPress={onPress} style={styles.songRowPressable}>
-      <BlurView intensity={18} tint="dark" style={styles.songRow}>
-        <Image source={{ uri: song.thumbnail }} style={styles.songThumb} />
-        <View style={styles.songMeta}>
-          <Text style={styles.songTitle} numberOfLines={1}>
-            {song.title}
-          </Text>
-          <Text style={styles.songArtist} numberOfLines={1}>
-            {song.artist}
-          </Text>
+    <View style={styles.filterWrap}>
+      <View style={styles.filterRow}>
+        {TABS.map((t) => {
+          const isActive = active === t;
+          return (
+            <Pressable
+              key={t}
+              onPress={() => onChange(t)}
+              style={[styles.filterPill, isActive ? styles.filterPillActive : null]}
+            >
+              <Text style={[styles.filterText, isActive ? styles.filterTextActive : null]}>{t}</Text>
+            </Pressable>
+          );
+        })}
+      </View>
+    </View>
+  );
+}
 
-          {song.locked ? (
-            <View style={styles.lockedBadgeRow}>
-              <LinearGradient colors={['rgba(255,122,24,0.6)', 'rgba(255,61,0,0.6)']} style={styles.lockedBadge}>
-                <Text style={styles.lockedBadgeText}>LOCKED EARLY ACCESS</Text>
-              </LinearGradient>
+function MediaCard({
+  item,
+  index,
+  isGrid,
+  onPress,
+}: {
+  item: Song;
+  index: number;
+  isGrid: boolean;
+  onPress: () => void;
+}) {
+  const viewsLabel = deriveViewsLabel(item.id);
+  const timeAgoLabel = deriveTimeAgoLabel(item.id);
+  const metaLine = `${viewsLabel} • ${timeAgoLabel}`;
+  const badgeText = item.mediaType === 'video' ? 'VIDEO' : 'AUDIO';
+
+  return (
+    <Pressable
+      onPress={onPress}
+      style={[
+        styles.cardPressable,
+        isGrid ? styles.cardPressableGrid : styles.cardPressableList,
+        isGrid && index % 2 === 0 ? styles.cardGridRightGutter : null,
+      ]}
+    >
+      <View style={styles.card}>
+        <View style={styles.cardThumbWrap}>
+          <Image source={{ uri: item.thumbnail }} style={styles.cardThumb} />
+          <LinearGradient colors={['rgba(0,0,0,0.00)', 'rgba(0,0,0,0.55)']} style={styles.cardThumbGradient} />
+
+          <View style={styles.cardBadgeRight}>
+            <Text style={styles.cardBadgeText}>{badgeText}</Text>
+          </View>
+
+          {item.locked ? (
+            <View style={styles.cardBadgeLeft}>
+              <View style={styles.cardBadgeLeftIcon}>
+                <Lock color="#fff" size={14} />
+              </View>
+              <Text style={styles.cardBadgeText}>LOCKED</Text>
             </View>
           ) : null}
         </View>
 
-        <View style={styles.songRight}>
-          {song.locked ? <Lock color="#fff" size={16} /> : <View style={{ width: 16, height: 16 }} />}
-          <Text style={styles.songDuration}>{song.duration}</Text>
-        </View>
-      </BlurView>
-      <View style={styles.songDivider} />
+        <Text style={styles.cardTitle} numberOfLines={2}>
+          {item.title}
+        </Text>
+        <Text style={styles.cardMeta} numberOfLines={1}>
+          {metaLine}
+        </Text>
+      </View>
     </Pressable>
   );
 }
 
-function MiniPlayerBar({
-  bottomInset,
-  song,
-  isPlaying,
-  onToggle,
-}: {
-  bottomInset: number;
-  song: Song;
-  isPlaying: boolean;
-  onToggle: () => void;
-}) {
-  return (
-    <View style={[styles.miniWrap, { bottom: bottomInset + 12 }]}>
-      <BlurView intensity={26} tint="dark" style={styles.miniPlayer}>
-        <Image source={{ uri: song.thumbnail }} style={styles.miniThumb} />
-        <View style={styles.miniMeta}>
-          <Text style={styles.miniTitle} numberOfLines={1}>
-            {song.title}
-          </Text>
-          <Text style={styles.miniArtist} numberOfLines={1}>
-            {song.artist}
-          </Text>
-          <View style={styles.miniProgress}>
-            <View style={styles.miniProgressFill} />
-          </View>
-        </View>
+function stableHash(input: string) {
+  let h = 0;
+  for (let i = 0; i < input.length; i++) {
+    h = (h << 5) - h + input.charCodeAt(i);
+    h |= 0;
+  }
+  return Math.abs(h);
+}
 
-        <Pressable onPress={onToggle} style={styles.miniBtn}>
-          {isPlaying ? <Pause color="#fff" fill="#fff" size={22} /> : <Play color="#fff" fill="#fff" size={22} />}
-        </Pressable>
-      </BlurView>
-    </View>
-  );
+function compactNumber(n: number) {
+  if (n >= 1_000_000_000) return `${stripTrailingZero((n / 1_000_000_000).toFixed(1))}B`;
+  if (n >= 1_000_000) return `${stripTrailingZero((n / 1_000_000).toFixed(1))}M`;
+  if (n >= 1_000) return `${stripTrailingZero((n / 1_000).toFixed(1))}K`;
+  return `${n}`;
+}
+
+function stripTrailingZero(s: string) {
+  return s.endsWith('.0') ? s.slice(0, -2) : s;
+}
+
+function deriveSubscribersLabel(seed: string | number) {
+  const key = String(seed || '');
+  const n = (stableHash(`subs:${key}`) % 9_000_000) + 120_000;
+  return `${compactNumber(n)} subscribers`;
+}
+
+function deriveViewsLabel(seed: string) {
+  const n = (stableHash(`views:${seed}`) % 40_000_000) + 1_200;
+  return `${compactNumber(n)} views`;
+}
+
+function deriveTimeAgoLabel(seed: string) {
+  const days = (stableHash(`ago:${seed}`) % 400) + 1;
+  if (days < 7) return `${days} days ago`;
+  if (days < 30) return `${Math.max(1, Math.round(days / 7))} weeks ago`;
+  if (days < 365) return `${Math.max(1, Math.round(days / 30))} months ago`;
+  return `${Math.max(1, Math.round(days / 365))} years ago`;
 }
 
 const styles = StyleSheet.create({
@@ -519,6 +666,9 @@ const styles = StyleSheet.create({
     width: '100%',
     backgroundColor: Colors.backgroundAlt,
     alignSelf: 'center',
+    borderBottomLeftRadius: 18,
+    borderBottomRightRadius: 18,
+    overflow: 'hidden',
   },
   youtubeVideo: {
     // unused; inline style on <Video />
@@ -536,7 +686,6 @@ const styles = StyleSheet.create({
     left: 0,
     right: 0,
     paddingHorizontal: 14,
-    paddingTop: 10,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'flex-start',
@@ -561,28 +710,6 @@ const styles = StyleSheet.create({
     textAlign: 'center',
   },
 
-  headerWrap: {
-    height: 240,
-    marginHorizontal: 14,
-    marginTop: 10,
-    borderRadius: 24,
-    overflow: 'hidden',
-  },
-  headerImg: {
-    width: '100%',
-    height: '100%',
-  },
-  headerGradient: {
-    ...StyleSheet.absoluteFillObject,
-  },
-  headerTopRow: {
-    position: 'absolute',
-    top: 12,
-    left: 12,
-    right: 12,
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-  },
   backBtn: {
     width: 36,
     height: 36,
@@ -591,38 +718,114 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  headerGlass: {
-    position: 'absolute',
-    left: 0,
-    right: 0,
-    bottom: 0,
-    paddingHorizontal: 18,
-    paddingTop: 16,
-    paddingBottom: 16,
-    backgroundColor: 'rgba(0,0,0,0.2)',
-  },
-  headerTextRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
-  artistName: {
-    color: '#fff',
-    fontSize: 34,
-    fontWeight: '800',
-    letterSpacing: 0.2,
-  },
   verifiedBadge: {
     marginLeft: 10,
     marginTop: 2,
   },
-  subscribers: {
+
+  profileWrap: {
+    marginTop: 12,
+  },
+  bannerWrap: {
+    height: 170,
+    marginHorizontal: 14,
+    borderRadius: 18,
+    overflow: 'hidden',
+    backgroundColor: '#121212',
+  },
+  bannerImg: {
+    width: '100%',
+    height: '100%',
+  },
+  bannerGradient: {
+    ...StyleSheet.absoluteFillObject,
+  },
+  bannerTopRow: {
+    position: 'absolute',
+    top: 12,
+    left: 12,
+    right: 12,
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+  },
+  avatarRow: {
+    marginTop: -44,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  avatarWrap: {
+    width: 92,
+    height: 92,
+    borderRadius: 46,
+    overflow: 'hidden',
+    borderWidth: 3,
+    borderColor: 'rgba(255,255,255,0.9)',
+    backgroundColor: '#121212',
+  },
+  avatarImg: {
+    width: '100%',
+    height: '100%',
+  },
+  profileMeta: {
+    paddingHorizontal: 18,
+    paddingTop: 10,
+    alignItems: 'center',
+  },
+  nameRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    maxWidth: '100%',
+  },
+  profileName: {
+    color: '#fff',
+    fontSize: 26,
+    fontWeight: '900',
+    letterSpacing: 0.2,
+    maxWidth: 260,
+  },
+  profileSubs: {
     marginTop: 6,
-    color: 'rgba(255,255,255,0.65)',
+    color: 'rgba(255,255,255,0.70)',
+    fontSize: 13,
+    fontWeight: '600',
+  },
+  actionsRow: {
+    marginTop: 14,
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  subscribeBtn: {
+    paddingHorizontal: 18,
+    height: 40,
+    borderRadius: 999,
+    backgroundColor: '#FF2D2D',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  subscribeBtnText: {
+    color: '#fff',
     fontSize: 14,
-    fontWeight: '500',
+    fontWeight: '900',
+    letterSpacing: 0.2,
+  },
+  joinBtn: {
+    marginLeft: 12,
+    paddingHorizontal: 18,
+    height: 40,
+    borderRadius: 999,
+    backgroundColor: 'rgba(255,255,255,0.08)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.14)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  joinBtnText: {
+    color: 'rgba(255,255,255,0.92)',
+    fontSize: 14,
+    fontWeight: '800',
   },
 
-  tabsWrap: {
+  channelTabsWrap: {
     marginTop: 14,
     marginHorizontal: 14,
     borderRadius: 18,
@@ -631,151 +834,157 @@ const styles = StyleSheet.create({
     borderColor: 'rgba(255,255,255,0.10)',
     backgroundColor: 'rgba(255,255,255,0.05)',
   },
-  tabsRow: {
-    flexDirection: 'row',
+  channelTabsContent: {
+    paddingHorizontal: 10,
+    paddingVertical: 10,
     alignItems: 'center',
-    height: 48,
   },
-  tabBtn: {
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  tabText: {
-    color: 'rgba(255,255,255,0.55)',
-    fontSize: 15,
-    fontWeight: '600',
-  },
-  tabTextActive: {
-    color: '#fff',
-  },
-  tabUnderline: {
-    position: 'absolute',
-    left: 40,
-    bottom: 10,
-    height: 2,
-    borderRadius: 2,
-    backgroundColor: '#fff',
-  },
-
-  songRowPressable: {
+  channelTabPill: {
+    marginRight: 10,
     paddingHorizontal: 14,
-    paddingTop: 14,
-  },
-  songRow: {
-    borderRadius: 18,
-    padding: 12,
-    flexDirection: 'row',
-    alignItems: 'center',
+    height: 34,
+    borderRadius: 999,
+    backgroundColor: 'rgba(255,255,255,0.06)',
     borderWidth: 1,
     borderColor: 'rgba(255,255,255,0.10)',
-    backgroundColor: 'rgba(255,255,255,0.05)',
-  },
-  songThumb: {
-    width: 58,
-    height: 58,
-    borderRadius: 14,
-  },
-  songMeta: {
-    flex: 1,
-    marginLeft: 12,
-  },
-  songTitle: {
-    color: '#fff',
-    fontSize: 16,
-    fontWeight: '800',
-  },
-  songArtist: {
-    color: 'rgba(255,255,255,0.42)',
-    fontSize: 13,
-    fontWeight: '500',
-    marginTop: 4,
-  },
-  lockedBadgeRow: {
-    marginTop: 8,
-    alignSelf: 'flex-start',
-  },
-  lockedBadge: {
-    borderRadius: 8,
-    paddingHorizontal: 10,
-    paddingVertical: 4,
-  },
-  lockedBadgeText: {
-    color: '#fff',
-    fontSize: 10,
-    fontWeight: '800',
-    letterSpacing: 0.2,
-  },
-  songRight: {
-    alignItems: 'flex-end',
-    justifyContent: 'center',
-    marginLeft: 10,
-  },
-  songDuration: {
-    color: 'rgba(255,255,255,0.7)',
-    fontSize: 13,
-    fontWeight: '600',
-    marginTop: 6,
-  },
-  songDivider: {
-    height: 1,
-    marginTop: 14,
-    marginHorizontal: 16,
-    backgroundColor: 'rgba(255,255,255,0.08)',
-  },
-
-  miniWrap: {
-    position: 'absolute',
-    left: 14,
-    right: 14,
-  },
-  miniPlayer: {
-    borderRadius: 18,
-    overflow: 'hidden',
-    padding: 12,
-    flexDirection: 'row',
     alignItems: 'center',
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.08)',
-    backgroundColor: 'rgba(14,14,14,0.55)',
+    justifyContent: 'center',
   },
-  miniThumb: {
-    width: 44,
-    height: 44,
-    borderRadius: 12,
+  channelTabPillActive: {
+    backgroundColor: 'rgba(255,255,255,0.14)',
+    borderColor: 'rgba(255,255,255,0.22)',
   },
-  miniMeta: {
-    flex: 1,
-    marginLeft: 12,
-  },
-  miniTitle: {
-    color: '#fff',
+  channelTabText: {
+    color: 'rgba(255,255,255,0.70)',
     fontSize: 14,
     fontWeight: '800',
   },
-  miniArtist: {
-    color: 'rgba(255,255,255,0.45)',
-    fontSize: 12,
-    fontWeight: '500',
-    marginTop: 3,
+  channelTabTextActive: {
+    color: '#fff',
   },
-  miniProgress: {
-    marginTop: 10,
-    height: 2,
-    borderRadius: 2,
-    backgroundColor: 'rgba(255,255,255,0.18)',
-    overflow: 'hidden',
+
+  filterWrap: {
+    marginTop: 12,
+    paddingHorizontal: 14,
   },
-  miniProgressFill: {
-    width: '40%',
-    height: '100%',
-    backgroundColor: '#fff',
+  filterRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
   },
-  miniBtn: {
-    width: 40,
-    height: 40,
-    borderRadius: 14,
+  filterPill: {
+    marginRight: 10,
+    paddingHorizontal: 14,
+    height: 30,
+    borderRadius: 999,
+    backgroundColor: 'rgba(18,18,18,0.80)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.12)',
     alignItems: 'center',
     justifyContent: 'center',
+  },
+  filterPillActive: {
+    backgroundColor: 'rgba(255,255,255,0.14)',
+    borderColor: 'rgba(255,255,255,0.22)',
+  },
+  filterText: {
+    color: 'rgba(255,255,255,0.70)',
+    fontSize: 12,
+    fontWeight: '900',
+    letterSpacing: 0.3,
+  },
+  filterTextActive: {
+    color: '#fff',
+  },
+
+  gridRow: {
+    paddingHorizontal: 14,
+  },
+  cardPressable: {
+    marginTop: 14,
+  },
+  cardPressableGrid: {
+    flex: 1,
+  },
+  cardPressableList: {
+    paddingHorizontal: 14,
+  },
+  cardGridRightGutter: {
+    marginRight: 12,
+  },
+  card: {
+    borderRadius: 16,
+    backgroundColor: 'rgba(18,18,18,0.86)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.10)',
+    overflow: 'hidden',
+  },
+  cardThumbWrap: {
+    width: '100%',
+    aspectRatio: 16 / 9,
+    backgroundColor: '#0B0B0B',
+  },
+  cardThumb: {
+    width: '100%',
+    height: '100%',
+  },
+  cardThumbGradient: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    bottom: 0,
+    height: 70,
+  },
+  cardBadgeRight: {
+    position: 'absolute',
+    right: 10,
+    bottom: 10,
+    paddingHorizontal: 10,
+    height: 24,
+    borderRadius: 999,
+    backgroundColor: 'rgba(0,0,0,0.55)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.14)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  cardBadgeLeft: {
+    position: 'absolute',
+    left: 10,
+    bottom: 10,
+    paddingHorizontal: 10,
+    height: 24,
+    borderRadius: 999,
+    backgroundColor: 'rgba(0,0,0,0.55)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.14)',
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  cardBadgeLeftIcon: {
+    marginRight: 6,
+  },
+  cardBadgeText: {
+    color: '#fff',
+    fontSize: 11,
+    fontWeight: '900',
+    letterSpacing: 0.4,
+  },
+  cardTitle: {
+    paddingHorizontal: 12,
+    paddingTop: 12,
+    color: '#fff',
+    fontSize: 14,
+    fontWeight: '900',
+    lineHeight: 18,
+  },
+  cardMeta: {
+    paddingHorizontal: 12,
+    paddingTop: 6,
+    paddingBottom: 12,
+    color: 'rgba(255,255,255,0.62)',
+    fontSize: 12,
+    fontWeight: '600',
   },
 
   // Debug styles
