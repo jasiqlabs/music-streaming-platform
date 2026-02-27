@@ -1,4 +1,5 @@
 export type RootStackParamList = {
-  Login: undefined;
+  Login: { prefillEmail?: string } | undefined;
+  Signup: undefined;
   MainTabs: undefined;
 };

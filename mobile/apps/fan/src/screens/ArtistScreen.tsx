@@ -266,7 +266,7 @@ export default function ArtistScreen({ navigation, route }: any) {
 
   return (
     <LinearGradient
-      colors={Colors.primaryGradient}
+      colors={Colors.backgroundGradient}
       start={{ x: 0, y: 0 }}
       end={{ x: 1, y: 1 }}
       style={styles.gradientBackground}

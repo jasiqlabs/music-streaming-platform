@@ -3,6 +3,46 @@ import { pool } from "../../common/db";
 
 const router = Router();
 
+const ensureContentSchema = async () => {
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS content_items (
+      id SERIAL PRIMARY KEY,
+      title VARCHAR(255) NOT NULL,
+      type VARCHAR(20) NOT NULL,
+      artist_id INT NOT NULL,
+      thumbnail_url TEXT,
+      media_url TEXT,
+      genre VARCHAR(80),
+      lifecycle_state VARCHAR(20) NOT NULL DEFAULT 'DRAFT',
+      is_approved BOOLEAN NOT NULL DEFAULT false,
+      rejection_reason TEXT,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+    )
+  `);
+
+  await pool.query("ALTER TABLE content_items ADD COLUMN IF NOT EXISTS title VARCHAR(255)");
+  await pool.query("ALTER TABLE content_items ADD COLUMN IF NOT EXISTS type VARCHAR(20)");
+  await pool.query("ALTER TABLE content_items ADD COLUMN IF NOT EXISTS artist_id INT");
+  await pool.query("ALTER TABLE content_items ADD COLUMN IF NOT EXISTS thumbnail_url TEXT");
+  await pool.query("ALTER TABLE content_items ADD COLUMN IF NOT EXISTS media_url TEXT");
+  await pool.query("ALTER TABLE content_items ADD COLUMN IF NOT EXISTS genre VARCHAR(80)");
+  await pool.query(
+    "ALTER TABLE content_items ADD COLUMN IF NOT EXISTS lifecycle_state VARCHAR(20) NOT NULL DEFAULT 'DRAFT'"
+  );
+  await pool.query(
+    "ALTER TABLE content_items ADD COLUMN IF NOT EXISTS is_approved BOOLEAN NOT NULL DEFAULT false"
+  );
+  await pool.query("ALTER TABLE content_items ADD COLUMN IF NOT EXISTS rejection_reason TEXT");
+  await pool.query(
+    "ALTER TABLE content_items ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ NOT NULL DEFAULT now()"
+  );
+
+  await pool.query("ALTER TABLE content_items ADD COLUMN IF NOT EXISTS published_at TIMESTAMPTZ");
+  await pool.query(
+    "ALTER TABLE content_items ADD COLUMN IF NOT EXISTS subscription_required BOOLEAN NOT NULL DEFAULT false"
+  );
+};
+
 const toAbsoluteUrl = (req: any, value: any) => {
   const raw = (value ?? "").toString().trim();
   if (!raw) return null;
@@ -15,6 +55,7 @@ const toAbsoluteUrl = (req: any, value: any) => {
 router.get("/", (req, res) => {
   (async () => {
     try {
+      await ensureContentSchema();
       const rows = await pool.query(
         `SELECT
            c.id,
@@ -48,7 +89,8 @@ router.get("/", (req, res) => {
       }));
 
       return res.json({ success: true, items });
-    } catch {
+    } catch (err: any) {
+      console.error("[fan/content] GET / error", err);
       return res.json({ success: true, items: [] });
     }
   })();
@@ -62,6 +104,7 @@ router.get("/artist/:artistId", (req, res) => {
     }
 
     try {
+      await ensureContentSchema();
       const rows = await pool.query(
         `SELECT id, title, type, thumbnail_url, media_url, created_at
          FROM content_items
@@ -91,7 +134,8 @@ router.get("/artist/:artistId", (req, res) => {
       });
 
       return res.json({ success: true, items });
-    } catch {
+    } catch (err: any) {
+      console.error("[fan/content] GET /artist/:artistId error", { artistId }, err);
       return res.status(500).json({ success: false, message: "Failed to fetch artist content" });
     }
   })();
@@ -105,6 +149,7 @@ router.get("/:id", (req, res) => {
     }
 
     try {
+      await ensureContentSchema();
       const rows = await pool.query(
         `SELECT id, title, type, thumbnail_url
          FROM content_items
@@ -130,7 +175,8 @@ router.get("/:id", (req, res) => {
           artwork: r.thumbnail_url ?? null
         }
       });
-    } catch {
+    } catch (err: any) {
+      console.error("[fan/content] GET /:id error", { id }, err);
       return res.status(500).json({ success: false, message: "Failed to fetch content" });
     }
   })();

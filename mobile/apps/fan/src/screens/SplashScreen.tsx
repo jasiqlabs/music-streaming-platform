@@ -12,7 +12,9 @@ export default function SplashScreen() {
     <View style={styles.container}>
       {/* Cinematic Background Gradient */}
       <LinearGradient
-        colors={['#00103C', '#000000']}
+        colors={Colors.backgroundGradient}
+        start={{ x: 0, y: 0 }}
+        end={{ x: 1, y: 1 }}
         style={StyleSheet.absoluteFill}
       />
 
@@ -42,7 +44,7 @@ export default function SplashScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: Colors.background,
+    backgroundColor: 'transparent',
     alignItems: 'center',
     justifyContent: 'center',
   },

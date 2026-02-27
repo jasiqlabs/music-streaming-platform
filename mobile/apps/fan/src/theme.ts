@@ -7,10 +7,11 @@ export const Colors = {
   accent: '#FFB608',
   accentSecondary: '#FF2553',
   // Primary brand gradient: Yellow -> Pink -> Deep Navy
+  backgroundGradient: ['#FFB608', '#FF2553', '#00103C'] as const,
   primaryGradient: ['#FFB608', '#FF2553', '#00103C'] as const,
   accentGradient: ['#FFB608', '#FF2553', '#00103C'] as const,
 
   textPrimary: '#FFFFFF',
-  textMuted: 'rgba(255,255,255,0.7)',
+  textMuted: 'rgba(255,255,255,0.6)',
 };
 

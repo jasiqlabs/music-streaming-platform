@@ -58,7 +58,7 @@ const styles = StyleSheet.create({
     right: 0,
     bottom: 0,
     height: 84,
-    backgroundColor: 'rgba(0,0,0,0.45)',
+    backgroundColor: 'transparent',
     borderTopWidth: 1,
     borderTopColor: 'rgba(255,255,255,0.08)',
   },

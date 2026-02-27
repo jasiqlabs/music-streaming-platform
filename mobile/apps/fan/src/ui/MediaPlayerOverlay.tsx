@@ -90,7 +90,7 @@ export default function MediaPlayerOverlay({
     return (
       <View pointerEvents="box-none" style={styles.root}>
         <LinearGradient
-          colors={Colors.primaryGradient}
+          colors={Colors.backgroundGradient}
           start={{ x: 0, y: 0 }}
           end={{ x: 1, y: 1 }}
           style={StyleSheet.absoluteFill}
