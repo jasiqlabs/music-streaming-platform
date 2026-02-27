@@ -3,7 +3,35 @@ import rateLimit from "express-rate-limit";
 const getClientIp = (req: any) => {
   const forwarded = (req.headers["x-forwarded-for"] as string | undefined) || "";
   const ip = forwarded.split(",")[0]?.trim();
-  return ip || req.ip || req.connection?.remoteAddress || "unknown";
+  return (
+    ip ||
+    req.ip ||
+    req.connection?.remoteAddress ||
+    req.socket?.remoteAddress ||
+    "unknown"
+  );
+};
+
+const isLocalOrPrivateIp = (ip: string) => {
+  const normalized = (ip || "").replace("::ffff:", "").trim();
+  if (!normalized) return false;
+
+  if (normalized === "127.0.0.1" || normalized === "::1" || normalized === "localhost") {
+    return true;
+  }
+
+  // RFC1918 private ranges
+  if (normalized.startsWith("10.")) return true;
+  if (normalized.startsWith("192.168.")) return true;
+
+  const parts = normalized.split(".");
+  if (parts.length === 4) {
+    const first = Number(parts[0]);
+    const second = Number(parts[1]);
+    if (first === 172 && second >= 16 && second <= 31) return true;
+  }
+
+  return false;
 };
 
 const maroonRateLimitHandler = (req: any, res: any) => {
@@ -36,7 +64,19 @@ export const authLimiter = rateLimit({
   limit: 5,
   standardHeaders: true,
   legacyHeaders: false,
-  keyGenerator: (req: any) => getClientIp(req),
+  keyGenerator: (req: any) => {
+    const ip = getClientIp(req);
+    // Never collapse all users into a shared "unknown" bucket.
+    if (ip && ip !== "unknown") return ip;
+    return req.socket?.remoteAddress || req.connection?.remoteAddress || "unknown";
+  },
+  // In local development, Expo/React Native frequently triggers repeated requests,
+  // and IP detection can be inconsistent. Skip auth limiting locally to avoid
+  // blocking valid logins during development.
+  skip: (req: any) => {
+    const ip = getClientIp(req);
+    return process.env.NODE_ENV !== "production" && isLocalOrPrivateIp(ip);
+  },
   handler: maroonRateLimitHandler
 });
 
