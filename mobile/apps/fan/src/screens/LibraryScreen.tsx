@@ -15,6 +15,8 @@ import { BadgeCheck, Pause, Play, Search } from 'lucide-react-native';
 import { BlurView } from 'expo-blur';
 import { LinearGradient } from 'expo-linear-gradient';
 
+import { Colors } from '../theme';
+
 type SubscribedArtist = {
   id: string;
   name: string;
@@ -103,17 +105,23 @@ export default function LibraryScreen({ navigation }: any) {
   const miniProgress = useMemo(() => 0.4, []);
 
   return (
-    <SafeAreaView style={styles.container}>
-      <ScrollView
-        showsVerticalScrollIndicator={false}
-        contentContainerStyle={{ paddingBottom: tabBarHeight + 140 }}
-      >
-        <View style={styles.headerRow}>
-          <Text style={styles.headerTitle}>Library</Text>
-          <Pressable onPress={() => {}} style={styles.headerIconBtn}>
-            <Search color="rgba(255,255,255,0.75)" size={18} />
-          </Pressable>
-        </View>
+    <LinearGradient
+      colors={Colors.backgroundGradient}
+      start={{ x: 0, y: 0 }}
+      end={{ x: 1, y: 1 }}
+      style={styles.gradientBackground}
+    >
+      <SafeAreaView style={styles.container}>
+        <ScrollView
+          showsVerticalScrollIndicator={false}
+          contentContainerStyle={{ paddingBottom: tabBarHeight + 140 }}
+        >
+          <View style={styles.headerRow}>
+            <Text style={styles.headerTitle}>Library</Text>
+            <Pressable onPress={() => {}} style={styles.headerIconBtn}>
+              <Search color="rgba(255,255,255,0.75)" size={18} />
+            </Pressable>
+          </View>
 
         <View style={styles.sectionHeaderRow}>
           <Text style={styles.sectionTitle}>Subscribed Artists</Text>
@@ -201,7 +209,7 @@ export default function LibraryScreen({ navigation }: any) {
             </Pressable>
           </View>
         ) : null}
-      </ScrollView>
+        </ScrollView>
 
       {currentSong ? (
         <View style={[styles.miniWrap, { bottom: tabBarHeight + 12 }]}>
@@ -228,14 +236,18 @@ export default function LibraryScreen({ navigation }: any) {
           </BlurView>
         </View>
       ) : null}
-    </SafeAreaView>
+      </SafeAreaView>
+    </LinearGradient>
   );
 }
 
 const styles = StyleSheet.create({
+  gradientBackground: {
+    flex: 1,
+  },
   container: {
     flex: 1,
-    backgroundColor: '#000',
+    backgroundColor: 'transparent',
   },
   headerRow: {
     flexDirection: 'row',

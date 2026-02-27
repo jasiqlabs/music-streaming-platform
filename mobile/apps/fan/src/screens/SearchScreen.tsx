@@ -9,9 +9,13 @@ import {
   View,
 } from 'react-native';
 
+import { BlurView } from 'expo-blur';
+import { LinearGradient } from 'expo-linear-gradient';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Lock, Pause, Play, Search as SearchIcon, X } from 'lucide-react-native';
 import { useBottomTabBarHeight } from '@react-navigation/bottom-tabs';
+
+import { Colors } from '../theme';
 
 import NotFoundContentScreen from './NotFoundContentScreen';
 
@@ -153,125 +157,138 @@ export default function SearchScreen({ navigation }: any) {
   }
 
   return (
-    <SafeAreaView style={styles.container}>
-      <FlatList
-        data={filteredResults}
-        keyExtractor={(item) => String(item.id)}
-        keyboardShouldPersistTaps="handled"
-        contentContainerStyle={{
-          paddingHorizontal: 16,
-          paddingBottom: currentSong ? tabBarHeight + 124 : tabBarHeight + 44,
-        }}
-        ListHeaderComponent={
-          <View>
-            <View style={styles.searchBar}>
-              <View style={styles.searchPill}>
-                <SearchIcon color="rgba(255,255,255,0.55)" size={18} />
-                <TextInput
-                  value={searchQuery}
-                  onChangeText={setSearchQuery}
-                  placeholder="Search artists or songs"
-                  placeholderTextColor="rgba(255,255,255,0.35)"
-                  style={styles.searchInput}
-                  autoCorrect={false}
-                  autoCapitalize="none"
-                  returnKeyType="search"
+    <LinearGradient
+      colors={Colors.backgroundGradient}
+      start={{ x: 0, y: 0 }}
+      end={{ x: 1, y: 1 }}
+      style={styles.gradientBackground}
+    >
+      <SafeAreaView style={styles.container}>
+        <FlatList
+          data={filteredResults}
+          keyExtractor={(item) => String(item.id)}
+          keyboardShouldPersistTaps="handled"
+          style={styles.list}
+          contentContainerStyle={{
+            paddingHorizontal: 16,
+            paddingBottom: currentSong ? tabBarHeight + 124 : tabBarHeight + 44,
+          }}
+          ListHeaderComponent={
+            <View>
+              <BlurView intensity={20} tint="dark" style={styles.searchBar}>
+                <View style={styles.searchPill}>
+                  <SearchIcon color="rgba(255,255,255,0.7)" size={18} />
+                  <TextInput
+                    value={searchQuery}
+                    onChangeText={setSearchQuery}
+                    placeholder="Search artists or songs"
+                    placeholderTextColor={Colors.textMuted}
+                    style={styles.searchInput}
+                    autoCorrect={false}
+                    autoCapitalize="none"
+                    returnKeyType="search"
+                  />
+                  {searchQuery.length > 0 ? (
+                    <Pressable style={styles.clearBtn} onPress={onClearSearch}>
+                      <X color="#fff" size={16} />
+                    </Pressable>
+                  ) : null}
+                </View>
+              </BlurView>
+
+              <Text style={styles.sectionTitle}>Results</Text>
+            </View>
+          }
+          stickyHeaderIndices={[0]}
+          renderItem={({ item }) => (
+            <Pressable style={styles.row} onPress={() => onPressResult(item)}>
+              <View style={styles.thumbWrap}>
+                <Image
+                  source={{ uri: item.artwork }}
+                  style={item.type === 'ARTIST' ? styles.artistThumb : styles.songThumb}
                 />
-                {searchQuery.length > 0 ? (
-                  <Pressable style={styles.clearBtn} onPress={onClearSearch}>
-                    <X color="#fff" size={16} />
-                  </Pressable>
+                {item.type === 'SONG' && item.isLocked ? (
+                  <View style={styles.lockBadge}>
+                    <Lock color="#fff" size={12} />
+                  </View>
                 ) : null}
               </View>
-            </View>
-
-            <Text style={styles.sectionTitle}>Results</Text>
-          </View>
-        }
-        stickyHeaderIndices={[0]}
-        renderItem={({ item }) => (
-          <Pressable style={styles.row} onPress={() => onPressResult(item)}>
-            <View style={styles.thumbWrap}>
-              <Image
-                source={{ uri: item.artwork }}
-                style={item.type === 'ARTIST' ? styles.artistThumb : styles.songThumb}
-              />
-              {item.type === 'SONG' && item.isLocked ? (
-                <View style={styles.lockBadge}>
-                  <Lock color="#fff" size={12} />
-                </View>
-              ) : null}
-            </View>
-            <View style={{ flex: 1 }}>
-              <Text style={styles.title} numberOfLines={1}>
-                {item.title}
-              </Text>
-              <Text style={styles.sub} numberOfLines={1}>
-                {item.type === 'ARTIST' ? 'Artist' : item.artistName}
-              </Text>
-            </View>
-            <Text style={styles.typeChip}>{item.type}</Text>
-          </Pressable>
-        )}
-        ListEmptyComponent={<View style={styles.emptySpacer} />}
-      />
-
-      {currentSong ? (
-        <View style={[styles.miniPlayer, { bottom: tabBarHeight + 12 }]}>
-          <Image
-            source={{ uri: currentSong.artwork }}
-            style={styles.miniPlayerImg}
-          />
-          <View style={{ flex: 1, marginLeft: 12 }}>
-            <Text style={styles.miniSongTitle} numberOfLines={1}>
-              {currentSong.title}
-            </Text>
-            <Text style={styles.miniArtistName} numberOfLines={1}>
-              {currentSong.artistName}
-            </Text>
-            <View style={styles.progressBar}>
-              <View style={[styles.progressFill, { width: `${miniProgress * 100}%` }]} />
-            </View>
-          </View>
-          <View style={styles.miniControls}>
-            <Pressable onPress={() => setIsPlaying((v) => !v)}>
-              {isPlaying ? (
-                <Pause color="#fff" fill="#fff" size={24} />
-              ) : (
-                <Play color="#fff" fill="#fff" size={24} />
-              )}
+              <View style={{ flex: 1 }}>
+                <Text style={styles.title} numberOfLines={1}>
+                  {item.title}
+                </Text>
+                <Text style={styles.sub} numberOfLines={1}>
+                  {item.type === 'ARTIST' ? 'Artist' : item.artistName}
+                </Text>
+              </View>
+              <Text style={styles.typeChip}>{item.type}</Text>
             </Pressable>
+          )}
+          ListEmptyComponent={<View style={styles.emptySpacer} />}
+        />
+
+        {currentSong ? (
+          <View style={[styles.miniPlayer, { bottom: tabBarHeight + 12 }]}>
+            <Image source={{ uri: currentSong.artwork }} style={styles.miniPlayerImg} />
+            <View style={{ flex: 1, marginLeft: 12 }}>
+              <Text style={styles.miniSongTitle} numberOfLines={1}>
+                {currentSong.title}
+              </Text>
+              <Text style={styles.miniArtistName} numberOfLines={1}>
+                {currentSong.artistName}
+              </Text>
+              <View style={styles.progressBar}>
+                <View style={[styles.progressFill, { width: `${miniProgress * 100}%` }]} />
+              </View>
+            </View>
+            <View style={styles.miniControls}>
+              <Pressable onPress={() => setIsPlaying((v) => !v)}>
+                {isPlaying ? (
+                  <Pause color="#fff" fill="#fff" size={24} />
+                ) : (
+                  <Play color="#fff" fill="#fff" size={24} />
+                )}
+              </Pressable>
+            </View>
           </View>
-        </View>
-      ) : null}
-    </SafeAreaView>
+        ) : null}
+      </SafeAreaView>
+    </LinearGradient>
   );
 }
 
 const styles = StyleSheet.create({
+  gradientBackground: {
+    flex: 1,
+  },
   container: {
     flex: 1,
-    backgroundColor: '#000',
+    backgroundColor: 'transparent',
+  },
+  list: {
+    backgroundColor: 'transparent',
   },
   searchBar: {
     paddingHorizontal: 16,
     paddingTop: 12,
     paddingBottom: 12,
-    backgroundColor: '#000',
+    backgroundColor: 'rgba(0,0,0,0.50)',
+    borderBottomWidth: 1,
+    borderBottomColor: 'rgba(255,255,255,0.10)',
   },
   searchPill: {
     flexDirection: 'row',
     alignItems: 'center',
     height: 44,
     paddingHorizontal: 12,
-    backgroundColor: 'rgba(255,255,255,0.06)',
+    backgroundColor: 'rgba(0,0,0,0.35)',
     borderRadius: 14,
     borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.08)',
+    borderColor: 'rgba(255,255,255,0.22)',
   },
   searchInput: {
     flex: 1,
-    color: '#fff',
+    color: Colors.textPrimary,
     paddingHorizontal: 12,
     fontSize: 14,
     height: 44,
@@ -282,16 +299,19 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: 'rgba(255,255,255,0.08)',
+    backgroundColor: 'rgba(0,0,0,0.35)',
     borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.10)',
+    borderColor: 'rgba(255,255,255,0.22)',
   },
   sectionTitle: {
-    color: 'rgba(255,255,255,0.75)',
+    color: Colors.textPrimary,
     fontSize: 14,
     fontWeight: '700',
     paddingHorizontal: 16,
     marginBottom: 10,
+    textShadowColor: 'rgba(0,0,0,0.35)',
+    textShadowOffset: { width: 0, height: 1 },
+    textShadowRadius: 2,
   },
   row: {
     flexDirection: 'row',
@@ -339,7 +359,7 @@ const styles = StyleSheet.create({
     fontSize: 14,
   },
   sub: {
-    color: 'rgba(255,255,255,0.55)',
+    color: Colors.textMuted,
     marginTop: 4,
     fontSize: 12,
   },
@@ -410,7 +430,7 @@ const styles = StyleSheet.create({
     fontWeight: 'bold',
   },
   miniArtistName: {
-    color: '#888',
+    color: Colors.textMuted,
     fontSize: 12,
   },
   progressBar: {

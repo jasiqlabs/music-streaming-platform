@@ -19,6 +19,7 @@ import { CreditCard, HelpCircle, LogOut, User } from 'lucide-react-native';
 import { userService, type AudioQualityPref, type Transaction } from '../services/userService';
 import { JWT_STORAGE_KEY } from '../services/api';
 import { resetToLogin } from '../navigation/rootNavigation';
+import { LinearGradient } from 'expo-linear-gradient';
 import { Colors } from '../theme';
 
 function PremiumBadge() {
@@ -186,16 +187,22 @@ export default function AccountScreen() {
   };
 
   return (
-    <SafeAreaView style={styles.container}>
-      <ScrollView
-        style={styles.scrollView}
-        contentContainerStyle={[styles.scrollContent, { paddingBottom: scrollContentPaddingBottom }]}
-        showsVerticalScrollIndicator={false}
-      >
-        <View style={styles.header}>
-          <Text style={styles.title}>Account</Text>
-          <Text style={styles.sub}>Manage your profile and settings.</Text>
-        </View>
+    <LinearGradient
+      colors={Colors.backgroundGradient}
+      start={{ x: 0, y: 0 }}
+      end={{ x: 1, y: 1 }}
+      style={styles.gradientBackground}
+    >
+      <SafeAreaView style={styles.container}>
+        <ScrollView
+          style={styles.scrollView}
+          contentContainerStyle={[styles.scrollContent, { paddingBottom: scrollContentPaddingBottom }]}
+          showsVerticalScrollIndicator={false}
+        >
+          <View style={styles.header}>
+            <Text style={styles.title}>Account</Text>
+            <Text style={styles.sub}>Manage your profile and settings.</Text>
+          </View>
 
         <View style={styles.section}>
           <View style={styles.profileCard}>
@@ -296,7 +303,7 @@ export default function AccountScreen() {
             </View>
           </View>
         )}
-      </ScrollView>
+        </ScrollView>
 
       <Modal visible={showTransactions} animationType="slide" onRequestClose={() => setShowTransactions(false)}>
         <SafeAreaView style={styles.modalContainer}>
@@ -380,17 +387,22 @@ export default function AccountScreen() {
           </View>
         </View>
       </Modal>
-    </SafeAreaView>
+      </SafeAreaView>
+    </LinearGradient>
   );
 }
 
 const styles = StyleSheet.create({
+  gradientBackground: {
+    flex: 1,
+  },
   container: {
     flex: 1,
-    backgroundColor: Colors.background,
+    backgroundColor: 'transparent',
   },
   scrollView: {
     flex: 1,
+    backgroundColor: 'transparent',
   },
   scrollContent: {
     paddingBottom: 24,
