@@ -3,6 +3,7 @@ import {
   ActivityIndicator,
   FlatList,
   Image,
+  LayoutAnimation,
   Pressable,
   ScrollView,
   StatusBar,
@@ -10,6 +11,8 @@ import {
   Text,
   View,
   TouchableOpacity,
+  Platform,
+  UIManager,
 } from 'react-native';
 
 import { BlurView } from 'expo-blur';
@@ -52,6 +55,10 @@ const TABS: TabKey[] = ['All', 'Audio', 'Video'];
 type ChannelTabKey = 'Home' | 'Videos' | 'Playlists' | 'Community';
 const CHANNEL_TABS: ChannelTabKey[] = ['Home', 'Videos', 'Playlists', 'Community'];
 
+if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental) {
+  UIManager.setLayoutAnimationEnabledExperimental(true);
+}
+
 export default function ArtistScreen({ navigation, route }: any) {
   const tabBarHeight = useBottomTabBarHeight();
   const isFocused = useIsFocused();
@@ -82,6 +89,7 @@ export default function ArtistScreen({ navigation, route }: any) {
   const [currentSong, setCurrentSong] = useState<Song | null>(null);
 
   const [inlineVideoAspectRatio, setInlineVideoAspectRatio] = useState(16 / 9);
+  const [isVideoPlaying, setIsVideoPlaying] = useState(false);
 
   const [artist, setArtist] = useState<Artist | null>(null);
   const [songs, setSongs] = useState<Song[]>([]);
@@ -189,6 +197,14 @@ export default function ArtistScreen({ navigation, route }: any) {
     setCurrentSong(match);
   }, [artist, initialMediaId, playQueue, songs]);
 
+  useEffect(() => {
+    const nextIsVideoPlaying = currentItem?.mediaType === 'video';
+    if (nextIsVideoPlaying === isVideoPlaying) return;
+
+    LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+    setIsVideoPlaying(nextIsVideoPlaying);
+  }, [currentItem?.mediaType, isVideoPlaying]);
+
   const isUnlocked = Boolean(route?.params?.unlocked);
 
   const filteredSongs = useMemo(() => {
@@ -258,6 +274,25 @@ export default function ArtistScreen({ navigation, route }: any) {
       <StatusBar barStyle="light-content" />
     <SafeAreaView style={styles.safeArea} edges={['top']}>
       <View style={styles.container}>
+        {isVideoPlaying && currentItem?.mediaType === 'video' ? (
+          <View style={styles.stickyVideoHost}>
+            <InlineVideoPlayer
+              mediaUrl={currentItem.mediaUrl}
+              aspectRatio={inlineVideoAspectRatio}
+              onAspectRatio={(r) => setInlineVideoAspectRatio(r)}
+              videoRef={videoRef}
+              shouldPlay={playerState.isPlaying}
+              positionMs={playerState.positionMs}
+              durationMs={playerState.durationMs}
+              onPlaybackStatusUpdate={onVideoPlaybackStatusUpdate}
+              onTogglePlay={() => togglePlayPause().catch(() => undefined)}
+              onSeek={(pos) => seekTo(pos).catch(() => undefined)}
+              onToggleFullscreen={() => setExpanded(true)}
+              onBack={() => navigation.goBack()}
+              topInset={insets.top}
+            />
+          </View>
+        ) : null}
         {/* Debug Toggle */}
         {showDebugToggle && (
           <View style={styles.debugToggle}>
@@ -298,34 +333,28 @@ export default function ArtistScreen({ navigation, route }: any) {
               keyExtractor={(item) => item.id}
               ListHeaderComponent={
                 <>
-                  {currentItem?.mediaType === 'video' ? (
-                    <InlineVideoPlayer
-                      mediaUrl={currentItem.mediaUrl}
-                      aspectRatio={inlineVideoAspectRatio}
-                      onAspectRatio={(r) => setInlineVideoAspectRatio(r)}
-                      videoRef={videoRef}
-                      shouldPlay={playerState.isPlaying}
-                      positionMs={playerState.positionMs}
-                      durationMs={playerState.durationMs}
-                      onPlaybackStatusUpdate={onVideoPlaybackStatusUpdate}
-                      onTogglePlay={() => togglePlayPause().catch(() => undefined)}
-                      onSeek={(pos) => seekTo(pos).catch(() => undefined)}
-                      onToggleFullscreen={() => setExpanded(true)}
+                  {!isVideoPlaying ? (
+                    <ProfileHeaderSection
+                      bannerUrl={artist.coverImage}
+                      avatarUrl={artist.profileImage || artist.coverImage}
+                      name={artist.name}
+                      verified={artist.verified}
+                      subscribersLabel={artist.subscribers}
                       onBack={() => navigation.goBack()}
-                      topInset={insets.top}
+                      onSubscribe={() => navigation.navigate('SubscriptionFlow')}
+                      onJoin={() => navigation.navigate('SubscriptionFlow')}
                     />
-                  ) : null}
-
-                  <ProfileHeaderSection
-                    bannerUrl={artist.coverImage}
-                    avatarUrl={artist.profileImage || artist.coverImage}
-                    name={artist.name}
-                    verified={artist.verified}
-                    subscribersLabel={artist.subscribers}
-                    onBack={() => navigation.goBack()}
-                    onSubscribe={() => navigation.navigate('SubscriptionFlow')}
-                    onJoin={() => navigation.navigate('SubscriptionFlow')}
-                  />
+                  ) : (
+                    <InlineArtistMetaSection
+                      avatarUrl={artist.profileImage || artist.coverImage}
+                      name={artist.name}
+                      verified={artist.verified}
+                      subscribersLabel={artist.subscribers}
+                      videoTitle={currentItem?.title ?? currentSong?.title ?? ''}
+                      onSubscribe={() => navigation.navigate('SubscriptionFlow')}
+                      onJoin={() => navigation.navigate('SubscriptionFlow')}
+                    />
+                  )}
 
                   <ChannelNavTabs
                     active={activeChannelTab}
@@ -340,6 +369,7 @@ export default function ArtistScreen({ navigation, route }: any) {
                 </>
               }
               contentContainerStyle={{
+                paddingTop: isVideoPlaying ? 220 : 0,
                 paddingBottom: tabBarHeight + 140,
               }}
               columnWrapperStyle={useGrid ? styles.gridRow : undefined}
@@ -509,6 +539,63 @@ function ProfileHeaderSection({
   );
 }
 
+function InlineArtistMetaSection({
+  avatarUrl,
+  name,
+  verified,
+  subscribersLabel,
+  videoTitle,
+  onSubscribe,
+  onJoin,
+}: {
+  avatarUrl: string;
+  name: string;
+  verified: boolean;
+  subscribersLabel: string;
+  videoTitle: string;
+  onSubscribe: () => void;
+  onJoin: () => void;
+}) {
+  return (
+    <View style={styles.inlineMetaWrap}>
+      {videoTitle ? (
+        <Text style={styles.inlineVideoTitle} numberOfLines={2}>
+          {videoTitle}
+        </Text>
+      ) : null}
+
+      <View style={styles.inlineMetaRow}>
+        <View style={styles.inlineAvatarWrap}>
+          <Image source={{ uri: avatarUrl }} style={styles.inlineAvatarImg} />
+        </View>
+
+        <View style={styles.inlineMetaTextWrap}>
+          <View style={styles.inlineNameRow}>
+            <Text style={styles.inlineArtistName} numberOfLines={1}>
+              {name}
+            </Text>
+            {verified ? (
+              <View style={styles.verifiedBadge}>
+                <BadgeCheck color="#4AA3FF" fill="#4AA3FF" size={18} />
+              </View>
+            ) : null}
+          </View>
+          <Text style={styles.inlineSubs}>{subscribersLabel}</Text>
+        </View>
+
+        <View style={styles.inlineActionsRow}>
+          <Pressable onPress={onSubscribe} style={styles.inlineSubscribeBtn}>
+            <Text style={styles.inlineSubscribeText}>Subscribe</Text>
+          </Pressable>
+          <Pressable onPress={onJoin} style={styles.inlineJoinBtn}>
+            <Text style={styles.inlineJoinText}>Join</Text>
+          </Pressable>
+        </View>
+      </View>
+    </View>
+  );
+}
+
 function ChannelNavTabs({ active, onChange }: { active: ChannelTabKey; onChange: (k: ChannelTabKey) => void }) {
   return (
     <BlurView intensity={22} tint="dark" style={styles.channelTabsWrap}>
@@ -653,6 +740,14 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: 'transparent',
+  },
+  stickyVideoHost: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    zIndex: 20,
+    elevation: 20,
   },
   gradientBackground: {
     flex: 1,
@@ -894,6 +989,88 @@ const styles = StyleSheet.create({
   },
   filterTextActive: {
     color: '#fff',
+  },
+
+  inlineMetaWrap: {
+    paddingTop: 12,
+    paddingHorizontal: 14,
+  },
+  inlineVideoTitle: {
+    color: '#fff',
+    fontSize: 16,
+    fontWeight: '900',
+    lineHeight: 20,
+  },
+  inlineMetaRow: {
+    marginTop: 10,
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  inlineAvatarWrap: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    overflow: 'hidden',
+    backgroundColor: '#121212',
+  },
+  inlineAvatarImg: {
+    width: '100%',
+    height: '100%',
+  },
+  inlineMetaTextWrap: {
+    flex: 1,
+    marginLeft: 10,
+  },
+  inlineNameRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  inlineArtistName: {
+    color: '#fff',
+    fontSize: 14,
+    fontWeight: '800',
+    maxWidth: 180,
+  },
+  inlineSubs: {
+    marginTop: 2,
+    color: 'rgba(255,255,255,0.7)',
+    fontSize: 12,
+    fontWeight: '600',
+  },
+  inlineActionsRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginLeft: 10,
+  },
+  inlineSubscribeBtn: {
+    paddingHorizontal: 14,
+    height: 34,
+    borderRadius: 999,
+    backgroundColor: '#FF2D2D',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  inlineSubscribeText: {
+    color: '#fff',
+    fontSize: 13,
+    fontWeight: '800',
+    letterSpacing: 0.2,
+  },
+  inlineJoinBtn: {
+    marginLeft: 8,
+    paddingHorizontal: 14,
+    height: 34,
+    borderRadius: 999,
+    backgroundColor: 'rgba(255,255,255,0.08)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.14)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  inlineJoinText: {
+    color: 'rgba(255,255,255,0.92)',
+    fontSize: 13,
+    fontWeight: '800',
   },
 
   gridRow: {
