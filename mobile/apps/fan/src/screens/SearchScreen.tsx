@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   FlatList,
   Image,
@@ -18,8 +18,6 @@ import { useBottomTabBarHeight } from '@react-navigation/bottom-tabs';
 
 import { Colors } from '../theme';
 import { api, searchApi } from '../services/api';
-
-import NotFoundContentScreen from './NotFoundContentScreen';
 
 type SearchResult = {
   id: string;
@@ -45,12 +43,18 @@ export default function SearchScreen({ navigation }: any) {
   const tabBarHeight = useBottomTabBarHeight();
 
   const [searchQuery, setSearchQuery] = useState('');
+  const [debouncedQuery, setDebouncedQuery] = useState('');
   const [filteredResults, setFilteredResults] = useState<SearchResult[]>([]);
   const [allContent, setAllContent] = useState<SearchResult[]>([]);
 
   const [isSearchFocused, setIsSearchFocused] = useState(false);
   const [recentSearches, setRecentSearches] = useState<SearchHistoryItem[]>([]);
   const [isLoadingHistory, setIsLoadingHistory] = useState(false);
+
+  const [isSuggesting, setIsSuggesting] = useState(false);
+  const [hasSubmitted, setHasSubmitted] = useState(false);
+
+  const inputRef = useRef<TextInput | null>(null);
 
   useEffect(() => {
     (async () => {
@@ -100,6 +104,14 @@ export default function SearchScreen({ navigation }: any) {
       }
     })();
   }, []);
+
+  useEffect(() => {
+    setHasSubmitted(false);
+    const handle = setTimeout(() => {
+      setDebouncedQuery(searchQuery);
+    }, 500);
+    return () => clearTimeout(handle);
+  }, [searchQuery]);
 
   useEffect(() => {
     (async () => {
@@ -188,20 +200,71 @@ export default function SearchScreen({ navigation }: any) {
     [fetchHistory, persistHistoryFallback, recentSearches]
   );
 
+  const fuzzyResults = useMemo(() => {
+    const raw = debouncedQuery.trim();
+    if (!raw) return [] as SearchResult[];
+
+    const q = raw.toLowerCase();
+    const songs = allContent.filter((x) => x.type === 'SONG');
+
+    const normalize = (s: string) => s.toLowerCase().replace(/[^a-z0-9]+/gi, ' ').trim();
+
+    const levenshtein = (a: string, b: string) => {
+      const aa = normalize(a);
+      const bb = normalize(b);
+      if (!aa.length) return bb.length;
+      if (!bb.length) return aa.length;
+      const dp: number[] = Array(bb.length + 1)
+        .fill(0)
+        .map((_, i) => i);
+      for (let i = 1; i <= aa.length; i += 1) {
+        let prev = dp[0];
+        dp[0] = i;
+        for (let j = 1; j <= bb.length; j += 1) {
+          const tmp = dp[j];
+          const cost = aa[i - 1] === bb[j - 1] ? 0 : 1;
+          dp[j] = Math.min(dp[j] + 1, dp[j - 1] + 1, prev + cost);
+          prev = tmp;
+        }
+      }
+      return dp[bb.length];
+    };
+
+    const scored = songs
+      .map((item) => {
+        const title = item.title ?? '';
+        const artist = item.artistName ?? '';
+        const hay = `${title} ${artist}`;
+        const hayNorm = normalize(hay);
+        const qNorm = normalize(q);
+
+        const includes = hayNorm.includes(qNorm);
+        const dist = levenshtein(qNorm, title);
+        const distArtist = levenshtein(qNorm, artist);
+        const bestDist = Math.min(dist, distArtist);
+
+        const score = (includes ? 1000 : 0) - bestDist;
+        return { item, score, includes, bestDist };
+      })
+      .filter((x) => x.includes || x.bestDist <= Math.max(2, Math.floor(normalize(q).length / 3)))
+      .sort((a, b) => b.score - a.score)
+      .slice(0, 50)
+      .map((x) => x.item);
+
+    return scored;
+  }, [allContent, debouncedQuery]);
+
   useEffect(() => {
-    const q = searchQuery.trim().toLowerCase();
+    const q = debouncedQuery.trim();
     if (!q) {
-      setFilteredResults(allContent);
+      setIsSuggesting(false);
+      setFilteredResults([]);
       return;
     }
-    setFilteredResults(
-      allContent.filter((item) => {
-        const title = item.title.toLowerCase();
-        const artist = item.artistName.toLowerCase();
-        return title.includes(q) || artist.includes(q);
-      })
-    );
-  }, [allContent, searchQuery]);
+    setIsSuggesting(true);
+    setFilteredResults(fuzzyResults);
+    setIsSuggesting(false);
+  }, [debouncedQuery, fuzzyResults]);
 
   const navigateHomeStack = (screen: string, params?: any) => {
     navigation.navigate('HomeTab', {
@@ -239,19 +302,10 @@ export default function SearchScreen({ navigation }: any) {
     setSearchQuery('');
   };
 
-  const showNotFound = searchQuery.trim().length > 0 && filteredResults.length === 0;
-
   const showRecent = isSearchFocused && searchQuery.trim().length === 0;
 
-  if (showNotFound) {
-    return (
-      <NotFoundContentScreen
-        onGoBack={() => {
-          onClearSearch();
-        }}
-      />
-    );
-  }
+  const showNoResults =
+    hasSubmitted && searchQuery.trim().length > 0 && filteredResults.length === 0;
 
   return (
     <LinearGradient
@@ -261,111 +315,144 @@ export default function SearchScreen({ navigation }: any) {
       style={styles.gradientBackground}
     >
       <SafeAreaView style={styles.container}>
-        {(() => {
-          const listData: SearchListItem[] = showRecent ? recentSearches : filteredResults;
-          return (
-        <FlatList
-          data={listData}
-          keyExtractor={(item) => String((item as any).id)}
-          keyboardShouldPersistTaps="handled"
-          style={styles.list}
-          contentContainerStyle={{
-            paddingHorizontal: 16,
-            paddingBottom: tabBarHeight + 44,
-          }}
-          ListHeaderComponent={
-            <View>
-              <BlurView intensity={20} tint="dark" style={styles.searchBar}>
-                <View style={styles.searchPill}>
-                  <SearchIcon color="rgba(255,255,255,0.7)" size={18} />
-                  <TextInput
-                    value={searchQuery}
-                    onChangeText={setSearchQuery}
-                    placeholder="Search artists or songs"
-                    placeholderTextColor={Colors.textMuted}
-                    style={styles.searchInput}
-                    autoCorrect={false}
-                    autoCapitalize="none"
-                    returnKeyType="search"
-                    onFocus={() => setIsSearchFocused(true)}
-                    onBlur={() => setIsSearchFocused(false)}
-                  />
-                  {searchQuery.length > 0 ? (
-                    <Pressable style={styles.clearBtn} onPress={onClearSearch}>
-                      <X color="#fff" size={16} />
-                    </Pressable>
-                  ) : null}
-                </View>
-              </BlurView>
-
-              <Text style={styles.sectionTitle}>
-                {showRecent ? (isLoadingHistory ? 'Recent Searches…' : 'Recent Searches') : 'Results'}
-              </Text>
+        <View>
+          <BlurView intensity={20} tint="dark" style={styles.searchBar}>
+            <View style={styles.searchPill}>
+              <SearchIcon color="rgba(255,255,255,0.7)" size={18} />
+              <TextInput
+                ref={(r) => {
+                  inputRef.current = r;
+                }}
+                value={searchQuery}
+                onChangeText={(t) => {
+                  setIsSuggesting(true);
+                  setSearchQuery(t);
+                }}
+                placeholder="Search artists or songs"
+                placeholderTextColor={Colors.textMuted}
+                style={styles.searchInput}
+                autoCorrect={false}
+                autoCapitalize="none"
+                autoFocus={false}
+                returnKeyType="search"
+                onFocus={() => setIsSearchFocused(true)}
+                onBlur={() => setIsSearchFocused(false)}
+                onSubmitEditing={() => {
+                  setHasSubmitted(true);
+                }}
+              />
+              {searchQuery.length > 0 ? (
+                <Pressable style={styles.clearBtn} onPress={onClearSearch}>
+                  <X color="#fff" size={16} />
+                </Pressable>
+              ) : null}
             </View>
-          }
-          stickyHeaderIndices={[0]}
-          renderItem={({ item }) => {
-            if (showRecent) {
-              const h = item as unknown as SearchHistoryItem;
-              return (
-                <BlurView intensity={18} tint="dark" style={styles.historyRow}>
-                  <Pressable
-                    style={{ flex: 1 }}
-                    onPress={() => {
-                      setSearchQuery(h.query);
-                      setIsSearchFocused(true);
-                      saveHistory(h.query).catch(() => undefined);
-                    }}
-                  >
-                    <Text style={styles.historyText} numberOfLines={1}>
-                      {h.query}
-                    </Text>
-                  </Pressable>
-                  <Pressable
-                    accessibilityLabel="Delete recent search"
-                    style={styles.historyDeleteBtn}
-                    onPress={() => {
-                      deleteHistoryItem(h.id).catch(() => undefined);
-                    }}
-                  >
-                    <X color="#fff" size={16} />
-                  </Pressable>
-                </BlurView>
-              );
-            }
+          </BlurView>
 
-            const r = item as unknown as SearchResult;
-            return (
-              <Pressable style={styles.row} onPress={() => onPressResult(r)}>
-                <View style={styles.thumbWrap}>
-                  {r.artwork ? (
-                    <Image
-                      source={{ uri: r.artwork }}
-                      style={r.type === 'ARTIST' ? styles.artistThumb : styles.songThumb}
-                    />
-                  ) : (
-                    <View style={r.type === 'ARTIST' ? styles.artistThumb : styles.songThumb} />
-                  )}
-                  {r.type === 'SONG' && r.isLocked ? (
-                    <View style={styles.lockBadge}>
-                      <Lock color="#fff" size={12} />
+          {showRecent || searchQuery.trim().length > 0 ? (
+            <Text style={styles.sectionTitle}>
+              {showRecent
+                ? isLoadingHistory
+                  ? 'Recent Searches…'
+                  : 'Recent Searches'
+                : isSuggesting
+                  ? 'Suggesting…'
+                  : 'Results'}
+            </Text>
+          ) : null}
+        </View>
+
+        {(() => {
+          const hasQuery = searchQuery.trim().length > 0;
+          const listData: SearchListItem[] = showRecent
+            ? recentSearches
+            : hasQuery
+              ? filteredResults
+              : [];
+
+          return (
+            <FlatList
+              data={listData}
+              keyExtractor={(item) => String((item as any).id)}
+              keyboardShouldPersistTaps="handled"
+              style={styles.list}
+              contentContainerStyle={{
+                paddingHorizontal: 16,
+                paddingBottom: tabBarHeight + 44,
+              }}
+              renderItem={({ item }) => {
+                if (showRecent) {
+                  const h = item as unknown as SearchHistoryItem;
+                  return (
+                    <BlurView intensity={18} tint="dark" style={styles.historyRow}>
+                      <Pressable
+                        style={{ flex: 1 }}
+                        onPress={() => {
+                          setSearchQuery(h.query);
+                          setIsSearchFocused(true);
+                          saveHistory(h.query).catch(() => undefined);
+                        }}
+                      >
+                        <Text style={styles.historyText} numberOfLines={1}>
+                          {h.query}
+                        </Text>
+                      </Pressable>
+                      <Pressable
+                        accessibilityLabel="Delete recent search"
+                        style={styles.historyDeleteBtn}
+                        onPress={() => {
+                          deleteHistoryItem(h.id).catch(() => undefined);
+                        }}
+                      >
+                        <X color="#fff" size={16} />
+                      </Pressable>
+                    </BlurView>
+                  );
+                }
+
+                const r = item as unknown as SearchResult;
+                return (
+                  <Pressable style={styles.row} onPress={() => onPressResult(r)}>
+                    <View style={styles.thumbWrap}>
+                      {r.artwork ? (
+                        <Image
+                          source={{ uri: r.artwork }}
+                          style={styles.songThumb}
+                        />
+                      ) : (
+                        <View style={styles.songThumb} />
+                      )}
+                      {r.isLocked ? (
+                        <View style={styles.lockBadge}>
+                          <Lock color="#fff" size={12} />
+                        </View>
+                      ) : null}
                     </View>
-                  ) : null}
-                </View>
-                <View style={{ flex: 1 }}>
-                  <Text style={styles.title} numberOfLines={1}>
-                    {r.title}
-                  </Text>
-                  <Text style={styles.sub} numberOfLines={1}>
-                    {r.type === 'ARTIST' ? 'Artist' : r.artistName}
-                  </Text>
-                </View>
-                <Text style={styles.typeChip}>{r.type}</Text>
-              </Pressable>
-            );
-          }}
-          ListEmptyComponent={<View style={styles.emptySpacer} />}
-        />
+                    <View style={{ flex: 1 }}>
+                      <Text style={styles.title} numberOfLines={1}>
+                        {r.title}
+                      </Text>
+                      <Text style={styles.sub} numberOfLines={1}>
+                        {r.artistName}
+                      </Text>
+                    </View>
+                    <Text style={styles.typeChip}>SONG</Text>
+                  </Pressable>
+                );
+              }}
+              ListEmptyComponent={
+                showNoResults ? (
+                  <View style={styles.emptyWrap}>
+                    <Text style={styles.emptyTitle}>No matches found</Text>
+                    <Text style={styles.emptySub}>
+                      Try a different spelling or search by artist name.
+                    </Text>
+                  </View>
+                ) : (
+                  <View style={styles.emptySpacer} />
+                )
+              }
+            />
           );
         })()}
       </SafeAreaView>
