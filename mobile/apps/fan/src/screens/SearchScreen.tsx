@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   FlatList,
   Image,
@@ -9,13 +9,15 @@ import {
   View,
 } from 'react-native';
 
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { BlurView } from 'expo-blur';
 import { LinearGradient } from 'expo-linear-gradient';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { Lock, Pause, Play, Search as SearchIcon, X } from 'lucide-react-native';
+import { Lock, Search as SearchIcon, X } from 'lucide-react-native';
 import { useBottomTabBarHeight } from '@react-navigation/bottom-tabs';
 
 import { Colors } from '../theme';
+import { api, searchApi } from '../services/api';
 
 import NotFoundContentScreen from './NotFoundContentScreen';
 
@@ -28,6 +30,17 @@ type SearchResult = {
   isLocked: boolean;
 };
 
+type SearchHistoryItem = {
+  id: number;
+  user_id: number;
+  query: string;
+  created_at: string;
+};
+
+type SearchListItem = SearchResult | SearchHistoryItem;
+
+const RECENT_SEARCHES_STORAGE_KEY = 'recentSearches';
+
 export default function SearchScreen({ navigation }: any) {
   const tabBarHeight = useBottomTabBarHeight();
 
@@ -35,62 +48,145 @@ export default function SearchScreen({ navigation }: any) {
   const [filteredResults, setFilteredResults] = useState<SearchResult[]>([]);
   const [allContent, setAllContent] = useState<SearchResult[]>([]);
 
-  const [currentSong, setCurrentSong] = useState<SearchResult | null>(null);
-  const [isPlaying, setIsPlaying] = useState(false);
+  const [isSearchFocused, setIsSearchFocused] = useState(false);
+  const [recentSearches, setRecentSearches] = useState<SearchHistoryItem[]>([]);
+  const [isLoadingHistory, setIsLoadingHistory] = useState(false);
 
   useEffect(() => {
-    const mock: SearchResult[] = [
-      {
-        id: 'luna-ray',
-        title: 'Luna Ray',
-        artistName: 'Subscription Based',
-        artwork:
-          'https://images.unsplash.com/photo-1524504388940-b1c1722653e1?auto=format&fit=crop&w=900&q=80',
-        type: 'ARTIST',
-        isLocked: false,
-      },
-      {
-        id: 'david-stone',
-        title: 'David Stone',
-        artistName: 'Bogaert',
-        artwork:
-          'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?auto=format&fit=crop&w=900&q=80',
-        type: 'ARTIST',
-        isLocked: false,
-      },
-      {
-        id: 'secret-melody',
-        title: 'Secret Melody',
-        artistName: 'Luna Ray',
-        artwork:
-          'https://images.unsplash.com/photo-1464863979621-258859e62245?auto=format&fit=crop&w=1400&q=80',
-        type: 'SONG',
-        isLocked: true,
-      },
-      {
-        id: 'midnight-dreams',
-        title: 'Midnight Dreams',
-        artistName: 'Luna Ray',
-        artwork:
-          'https://images.unsplash.com/photo-1470225620780-dba8ba36b745?auto=format&fit=crop&w=1200&q=80',
-        type: 'SONG',
-        isLocked: false,
-      },
-      {
-        id: 'golden-skies',
-        title: 'Golden Skies',
-        artistName: 'David Stone',
-        artwork:
-          'https://images.unsplash.com/photo-1511379938547-c1f69419868d?auto=format&fit=crop&w=1200&q=80',
-        type: 'SONG',
-        isLocked: false,
-      },
-    ];
+    (async () => {
+      try {
+        const [artistsRes, contentRes] = await Promise.all([
+          api.get('/artists'),
+          api.get('/content'),
+        ]);
 
-    setAllContent(mock);
-    setFilteredResults(mock);
-    setCurrentSong(mock.find((x) => x.type === 'SONG') ?? null);
+        const artists = (artistsRes.data?.artists ?? []).map((a: any) => {
+          const id = String(a.id);
+          const title = (a.name ?? '').toString();
+          const artistName = 'Artist';
+          const artwork = (a.profileImageUrl ?? a.profile_image_url ?? '').toString();
+          return {
+            id,
+            title,
+            artistName,
+            artwork,
+            type: 'ARTIST' as const,
+            isLocked: false,
+          };
+        });
+
+        const content = (contentRes.data?.items ?? []).map((c: any) => {
+          const id = String(c.id);
+          const title = (c.title ?? '').toString();
+          const artistName = (c.artistName ?? c.artist_name ?? '').toString();
+          const artwork = (c.artwork ?? c.thumbnailUrl ?? c.thumbnail_url ?? '').toString();
+          const isLocked = Boolean(c.locked ?? c.isLocked ?? false);
+          return {
+            id,
+            title,
+            artistName,
+            artwork,
+            type: 'SONG' as const,
+            isLocked,
+          };
+        });
+
+        const merged = [...artists, ...content].filter((x) => x.title.trim().length > 0);
+        setAllContent(merged);
+        setFilteredResults(merged);
+      } catch {
+        setAllContent([]);
+        setFilteredResults([]);
+      }
+    })();
   }, []);
+
+  useEffect(() => {
+    (async () => {
+      try {
+        const raw = await AsyncStorage.getItem(RECENT_SEARCHES_STORAGE_KEY);
+        if (!raw) return;
+        const parsed = JSON.parse(raw);
+        if (Array.isArray(parsed)) {
+          const fallback = parsed
+            .map((q: any, idx: number) => ({
+              id: -(idx + 1),
+              user_id: 0,
+              query: (q ?? '').toString(),
+              created_at: new Date().toISOString(),
+            }))
+            .filter((x) => x.query.trim().length > 0);
+          setRecentSearches(fallback);
+        }
+      } catch {
+        // ignore
+      }
+    })();
+  }, []);
+
+  const persistHistoryFallback = useCallback(async (items: SearchHistoryItem[]) => {
+    try {
+      const queries = items
+        .map((x) => x.query)
+        .filter((q) => q.trim().length > 0)
+        .slice(0, 10);
+      await AsyncStorage.setItem(RECENT_SEARCHES_STORAGE_KEY, JSON.stringify(queries));
+    } catch {
+      // ignore
+    }
+  }, []);
+
+  const fetchHistory = useCallback(async () => {
+    setIsLoadingHistory(true);
+    try {
+      const res = await searchApi.get('/history');
+      const items = (res.data?.items ?? []) as SearchHistoryItem[];
+      setRecentSearches(items);
+      await persistHistoryFallback(items);
+    } catch {
+      // ignore
+    } finally {
+      setIsLoadingHistory(false);
+    }
+  }, [persistHistoryFallback]);
+
+  useEffect(() => {
+    if (!isSearchFocused) return;
+    if (searchQuery.trim().length > 0) return;
+    fetchHistory().catch(() => undefined);
+  }, [fetchHistory, isSearchFocused, searchQuery]);
+
+  const saveHistory = useCallback(
+    async (query: string) => {
+      const q = query.trim();
+      if (!q) return;
+      try {
+        await searchApi.post('/history', { query: q });
+        await fetchHistory();
+      } catch {
+        // ignore
+      }
+    },
+    [fetchHistory]
+  );
+
+  const deleteHistoryItem = useCallback(
+    async (id: number) => {
+      if (id < 0) {
+        const next = recentSearches.filter((x) => x.id !== id);
+        setRecentSearches(next);
+        await persistHistoryFallback(next);
+        return;
+      }
+      try {
+        await searchApi.delete(`/history/${id}`);
+      } catch {
+        // ignore
+      }
+      await fetchHistory();
+    },
+    [fetchHistory, persistHistoryFallback, recentSearches]
+  );
 
   useEffect(() => {
     const q = searchQuery.trim().toLowerCase();
@@ -115,6 +211,7 @@ export default function SearchScreen({ navigation }: any) {
   };
 
   const onPressResult = (item: SearchResult) => {
+    saveHistory(item.title).catch(() => undefined);
     if (item.type === 'ARTIST') {
       navigateHomeStack('Artist', { artistId: item.id });
       return;
@@ -142,9 +239,9 @@ export default function SearchScreen({ navigation }: any) {
     setSearchQuery('');
   };
 
-  const miniProgress = useMemo(() => 0.4, []);
-
   const showNotFound = searchQuery.trim().length > 0 && filteredResults.length === 0;
+
+  const showRecent = isSearchFocused && searchQuery.trim().length === 0;
 
   if (showNotFound) {
     return (
@@ -164,14 +261,17 @@ export default function SearchScreen({ navigation }: any) {
       style={styles.gradientBackground}
     >
       <SafeAreaView style={styles.container}>
+        {(() => {
+          const listData: SearchListItem[] = showRecent ? recentSearches : filteredResults;
+          return (
         <FlatList
-          data={filteredResults}
-          keyExtractor={(item) => String(item.id)}
+          data={listData}
+          keyExtractor={(item) => String((item as any).id)}
           keyboardShouldPersistTaps="handled"
           style={styles.list}
           contentContainerStyle={{
             paddingHorizontal: 16,
-            paddingBottom: currentSong ? tabBarHeight + 124 : tabBarHeight + 44,
+            paddingBottom: tabBarHeight + 44,
           }}
           ListHeaderComponent={
             <View>
@@ -187,6 +287,8 @@ export default function SearchScreen({ navigation }: any) {
                     autoCorrect={false}
                     autoCapitalize="none"
                     returnKeyType="search"
+                    onFocus={() => setIsSearchFocused(true)}
+                    onBlur={() => setIsSearchFocused(false)}
                   />
                   {searchQuery.length > 0 ? (
                     <Pressable style={styles.clearBtn} onPress={onClearSearch}>
@@ -196,62 +298,76 @@ export default function SearchScreen({ navigation }: any) {
                 </View>
               </BlurView>
 
-              <Text style={styles.sectionTitle}>Results</Text>
+              <Text style={styles.sectionTitle}>
+                {showRecent ? (isLoadingHistory ? 'Recent Searches…' : 'Recent Searches') : 'Results'}
+              </Text>
             </View>
           }
           stickyHeaderIndices={[0]}
-          renderItem={({ item }) => (
-            <Pressable style={styles.row} onPress={() => onPressResult(item)}>
-              <View style={styles.thumbWrap}>
-                <Image
-                  source={{ uri: item.artwork }}
-                  style={item.type === 'ARTIST' ? styles.artistThumb : styles.songThumb}
-                />
-                {item.type === 'SONG' && item.isLocked ? (
-                  <View style={styles.lockBadge}>
-                    <Lock color="#fff" size={12} />
-                  </View>
-                ) : null}
-              </View>
-              <View style={{ flex: 1 }}>
-                <Text style={styles.title} numberOfLines={1}>
-                  {item.title}
-                </Text>
-                <Text style={styles.sub} numberOfLines={1}>
-                  {item.type === 'ARTIST' ? 'Artist' : item.artistName}
-                </Text>
-              </View>
-              <Text style={styles.typeChip}>{item.type}</Text>
-            </Pressable>
-          )}
+          renderItem={({ item }) => {
+            if (showRecent) {
+              const h = item as unknown as SearchHistoryItem;
+              return (
+                <BlurView intensity={18} tint="dark" style={styles.historyRow}>
+                  <Pressable
+                    style={{ flex: 1 }}
+                    onPress={() => {
+                      setSearchQuery(h.query);
+                      setIsSearchFocused(true);
+                      saveHistory(h.query).catch(() => undefined);
+                    }}
+                  >
+                    <Text style={styles.historyText} numberOfLines={1}>
+                      {h.query}
+                    </Text>
+                  </Pressable>
+                  <Pressable
+                    accessibilityLabel="Delete recent search"
+                    style={styles.historyDeleteBtn}
+                    onPress={() => {
+                      deleteHistoryItem(h.id).catch(() => undefined);
+                    }}
+                  >
+                    <X color="#fff" size={16} />
+                  </Pressable>
+                </BlurView>
+              );
+            }
+
+            const r = item as unknown as SearchResult;
+            return (
+              <Pressable style={styles.row} onPress={() => onPressResult(r)}>
+                <View style={styles.thumbWrap}>
+                  {r.artwork ? (
+                    <Image
+                      source={{ uri: r.artwork }}
+                      style={r.type === 'ARTIST' ? styles.artistThumb : styles.songThumb}
+                    />
+                  ) : (
+                    <View style={r.type === 'ARTIST' ? styles.artistThumb : styles.songThumb} />
+                  )}
+                  {r.type === 'SONG' && r.isLocked ? (
+                    <View style={styles.lockBadge}>
+                      <Lock color="#fff" size={12} />
+                    </View>
+                  ) : null}
+                </View>
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.title} numberOfLines={1}>
+                    {r.title}
+                  </Text>
+                  <Text style={styles.sub} numberOfLines={1}>
+                    {r.type === 'ARTIST' ? 'Artist' : r.artistName}
+                  </Text>
+                </View>
+                <Text style={styles.typeChip}>{r.type}</Text>
+              </Pressable>
+            );
+          }}
           ListEmptyComponent={<View style={styles.emptySpacer} />}
         />
-
-        {currentSong ? (
-          <View style={[styles.miniPlayer, { bottom: tabBarHeight + 12 }]}>
-            <Image source={{ uri: currentSong.artwork }} style={styles.miniPlayerImg} />
-            <View style={{ flex: 1, marginLeft: 12 }}>
-              <Text style={styles.miniSongTitle} numberOfLines={1}>
-                {currentSong.title}
-              </Text>
-              <Text style={styles.miniArtistName} numberOfLines={1}>
-                {currentSong.artistName}
-              </Text>
-              <View style={styles.progressBar}>
-                <View style={[styles.progressFill, { width: `${miniProgress * 100}%` }]} />
-              </View>
-            </View>
-            <View style={styles.miniControls}>
-              <Pressable onPress={() => setIsPlaying((v) => !v)}>
-                {isPlaying ? (
-                  <Pause color="#fff" fill="#fff" size={24} />
-                ) : (
-                  <Play color="#fff" fill="#fff" size={24} />
-                )}
-              </Pressable>
-            </View>
-          </View>
-        ) : null}
+          );
+        })()}
       </SafeAreaView>
     </LinearGradient>
   );
@@ -322,6 +438,34 @@ const styles = StyleSheet.create({
     marginBottom: 12,
     borderWidth: 1,
     borderColor: 'rgba(255,255,255,0.06)',
+  },
+  historyRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: 'rgba(255, 255, 255, 0.05)',
+    borderRadius: 16,
+    paddingHorizontal: 12,
+    paddingVertical: 12,
+    marginBottom: 12,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.06)',
+    overflow: 'hidden',
+  },
+  historyText: {
+    color: Colors.textPrimary,
+    fontWeight: '700',
+    fontSize: 14,
+  },
+  historyDeleteBtn: {
+    width: 34,
+    height: 34,
+    borderRadius: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: 'rgba(0,0,0,0.28)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.14)',
+    marginLeft: 10,
   },
   thumbWrap: {
     width: 52,
@@ -404,49 +548,5 @@ const styles = StyleSheet.create({
   },
   emptySpacer: {
     height: 180,
-  },
-  miniPlayer: {
-    position: 'absolute',
-    bottom: 15,
-    left: 15,
-    right: 15,
-    height: 70,
-    backgroundColor: 'rgba(18,18,18,0.78)',
-    borderRadius: 18,
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: 10,
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.08)',
-  },
-  miniPlayerImg: {
-    width: 50,
-    height: 50,
-    borderRadius: 8,
-  },
-  miniSongTitle: {
-    color: '#fff',
-    fontSize: 15,
-    fontWeight: 'bold',
-  },
-  miniArtistName: {
-    color: Colors.textMuted,
-    fontSize: 12,
-  },
-  progressBar: {
-    height: 2,
-    backgroundColor: 'rgba(255,255,255,0.18)',
-    marginTop: 8,
-    borderRadius: 1,
-    overflow: 'hidden',
-  },
-  progressFill: {
-    height: '100%',
-    backgroundColor: '#fff',
-  },
-  miniControls: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: 10,
   },
 });

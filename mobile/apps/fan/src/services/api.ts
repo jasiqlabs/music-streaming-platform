@@ -1,7 +1,7 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import axios, { AxiosHeaders } from 'axios';
 
-const HOST_BASE_URL = process.env.EXPO_PUBLIC_API_URL || 'http://localhost:8000';
+export const HOST_BASE_URL = process.env.EXPO_PUBLIC_API_URL || 'http://localhost:8000';
 const API_BASE_URL = `${HOST_BASE_URL}/api/v1/fan`;
 export const JWT_STORAGE_KEY = 'jwt';
 export const USER_TOKEN_STORAGE_KEY = 'userToken';
@@ -22,7 +22,33 @@ export const apiV1 = axios.create({
   timeout: 15000,
 });
 
+export const searchApi = axios.create({
+  baseURL: `${HOST_BASE_URL}/api/v1/search`,
+  headers: {
+    'Content-Type': 'application/json',
+  },
+  timeout: 15000,
+});
+
 api.interceptors.request.use(async (config) => {
+  const token =
+    (await AsyncStorage.getItem(USER_TOKEN_STORAGE_KEY)) ??
+    (await AsyncStorage.getItem(JWT_STORAGE_KEY));
+
+  if (token) {
+    const headers =
+      config.headers instanceof AxiosHeaders
+        ? config.headers
+        : new AxiosHeaders(config.headers);
+
+    headers.set('Authorization', `Bearer ${token}`);
+    config.headers = headers;
+  }
+
+  return config;
+});
+
+searchApi.interceptors.request.use(async (config) => {
   const token =
     (await AsyncStorage.getItem(USER_TOKEN_STORAGE_KEY)) ??
     (await AsyncStorage.getItem(JWT_STORAGE_KEY));

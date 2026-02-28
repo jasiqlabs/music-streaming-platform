@@ -13,6 +13,7 @@ import artistRoutes from "./routes/artist";
 import adminRoutes from "./routes/admin";
 import authRoutes from "./routes/auth";
 import contentRoutes from "./routes/content";
+import searchRoutes from "./routes/search";
 
 
 
@@ -157,6 +158,7 @@ app.use("/api/v1/artist", artistRoutes);
 app.use("/api/v1/admin", adminRoutes);
 app.use("/api/v1/auth", authRoutes);
 app.use("/api/v1/content", contentRoutes);
+app.use("/api/v1/search", searchRoutes);
 
 app.use((req: any, res: any, next: any) => {
   const err: any = new Error(`Route not found: ${req.method} ${req.originalUrl || req.url}`);

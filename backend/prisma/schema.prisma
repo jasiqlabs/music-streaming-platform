@@ -47,6 +47,7 @@ model users {
   accent_color             String?        @db.VarChar(20)
   artist_stats             artist_stats?
   transactions             transactions[]
+  search_history           search_history[]
 }
 
 model transactions {
@@ -85,4 +86,16 @@ model content_items {
   created_at            DateTime  @default(now()) @db.Timestamptz(6)
   published_at          DateTime? @db.Timestamptz(6)
   subscription_required Boolean   @default(false)
+}
+
+model search_history {
+  id         Int      @id @default(autoincrement())
+  user_id    Int
+  query      String
+  created_at DateTime @default(now()) @db.Timestamptz(6)
+
+  user users @relation(fields: [user_id], references: [id], onDelete: Cascade)
+
+  @@index([user_id])
+  @@unique([user_id, query])
 }
