@@ -13,6 +13,7 @@ import { Platform } from 'react-native';
 import { Audio, type AVPlaybackStatus, Video } from 'expo-av';
 
 import MediaPlayerOverlay from '../ui/MediaPlayerOverlay';
+import { recordPlayback } from '../services/libraryService';
 
 export type MediaType = 'audio' | 'video';
 
@@ -106,10 +107,40 @@ export function MediaPlayerProvider({ children }: { children: ReactNode }) {
 
   const currentItem = state.queue.length ? state.queue[state.currentIndex] ?? null : null;
 
+  const playbackRecordTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const lastRecordedRef = useRef<string | null>(null);
+
   const stateRef = useRef<PlayerState>(state);
   useEffect(() => {
     stateRef.current = state;
   }, [state]);
+
+  useEffect(() => {
+    if (!currentItem?.id) return;
+    if (!state.isPlaying) return;
+
+    const key = `${currentItem.id}`;
+
+    // avoid multiple immediate calls when state updates rapidly
+    if (lastRecordedRef.current === key) return;
+
+    if (playbackRecordTimerRef.current) {
+      clearTimeout(playbackRecordTimerRef.current);
+      playbackRecordTimerRef.current = null;
+    }
+
+    playbackRecordTimerRef.current = setTimeout(() => {
+      lastRecordedRef.current = key;
+      recordPlayback(key).catch(() => undefined);
+    }, 500);
+
+    return () => {
+      if (playbackRecordTimerRef.current) {
+        clearTimeout(playbackRecordTimerRef.current);
+        playbackRecordTimerRef.current = null;
+      }
+    };
+  }, [currentItem?.id, state.isPlaying]);
 
   const currentItemRef = useRef<MediaItem | null>(currentItem);
   useEffect(() => {

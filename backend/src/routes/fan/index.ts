@@ -7,6 +7,7 @@ import contentRoutes from "../../modules/content/content.routes";
 import streamRoutes from "../../modules/streaming/stream.routes";
 import subRoutes from "../../modules/subscription/sub.routes";
 import analyticsRoutes from "../../modules/analytics/analytics.routes";
+import libraryRoutes from "../../modules/library/library.routes";
 
 const router = Router();
 
@@ -18,5 +19,6 @@ router.use("/content", contentRoutes);
 router.use("/stream", streamRoutes);
 router.use("/subscriptions", subRoutes);
 router.use("/analytics", analyticsRoutes);
+router.use("/library", libraryRoutes);
 
 export default router;

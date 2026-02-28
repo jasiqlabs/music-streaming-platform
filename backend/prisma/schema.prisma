@@ -48,6 +48,8 @@ model users {
   artist_stats             artist_stats?
   transactions             transactions[]
   search_history           search_history[]
+  subscriptions            subscriptions[]
+  playback_history         playback_history[]
 }
 
 model transactions {
@@ -86,6 +88,37 @@ model content_items {
   created_at            DateTime  @default(now()) @db.Timestamptz(6)
   published_at          DateTime? @db.Timestamptz(6)
   subscription_required Boolean   @default(false)
+  playback_history      playback_history[]
+}
+
+model subscriptions {
+  id         Int      @id @default(autoincrement())
+  user_id    Int
+  artist_id  Int
+  status     String   @default("ACTIVE") @db.VarChar(20)
+  created_at DateTime @default(now()) @db.Timestamptz(6)
+  updated_at DateTime @default(now()) @db.Timestamptz(6)
+
+  user users @relation(fields: [user_id], references: [id], onDelete: Cascade)
+
+  @@index([user_id])
+  @@index([artist_id])
+  @@unique([user_id, artist_id])
+}
+
+model playback_history {
+  id        Int      @id @default(autoincrement())
+  user_id   Int
+  song_id   Int      @map("content_id")
+  played_at DateTime @default(now()) @db.Timestamptz(6)
+
+  user users         @relation(fields: [user_id], references: [id], onDelete: Cascade)
+  song content_items @relation(fields: [song_id], references: [id], onDelete: Cascade)
+
+  @@index([user_id])
+  @@index([song_id])
+  @@index([played_at])
+  @@unique([user_id, song_id])
 }
 
 model search_history {
