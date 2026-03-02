@@ -18,6 +18,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { BlurView } from 'expo-blur';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Eye, EyeOff } from 'lucide-react-native';
+import { Shadow } from 'react-native-shadow-2';
 
 import type { RootStackParamList } from '../navigation/types';
 import { useAuth } from '../store/authStore';
@@ -88,10 +89,28 @@ export default function LoginScreen({ navigation, route }: Props) {
               isDesktop ? styles.contentDesktop : styles.contentMobile,
             ]}
           >
-            <Image
-              source={require('../logo.jpg')}
-              style={[styles.logo, isDesktop && styles.logoDesktop]}
-            />
+            <Shadow
+              distance={40}
+              startColor="rgba(255, 69, 0, 0.25)"
+              offset={[0, 0]}
+            >
+              <View
+                style={[
+                  styles.logoWrapper,
+                  isDesktop && styles.logoWrapperDesktop,
+                ]}
+              >
+                <Image
+                  source={require('../logo.jpg')}
+                  style={styles.logoImage}
+                  resizeMode="cover"
+                />
+                <LinearGradient
+                  colors={['transparent', 'rgba(0,0,0,0.4)']}
+                  style={styles.logoInnerGradient}
+                />
+              </View>
+            </Shadow>
 
             <BlurView intensity={25} tint="dark" style={[styles.cardBlur, isDesktop && styles.cardBlurDesktop]}>
               <View style={[styles.cardInner, isDesktop && styles.cardInnerDesktop]}>
@@ -193,15 +212,28 @@ const styles = StyleSheet.create({
   contentDesktop: {
     maxWidth: 440,
   },
-  logo: {
-    width: 90,
-    height: 90,
+  logoWrapper: {
+    width: 140,
+    height: 140,
+    borderRadius: 30,
+    overflow: 'hidden',
+    backgroundColor: '#121212',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.1)',
     marginBottom: 30,
   },
-  logoDesktop: {
-    width: 84,
-    height: 84,
+  logoWrapperDesktop: {
+    width: 120,
+    height: 120,
+    borderRadius: 26,
     marginBottom: 24,
+  },
+  logoImage: {
+    width: '100%',
+    height: '100%',
+  },
+  logoInnerGradient: {
+    ...StyleSheet.absoluteFillObject,
   },
   cardBlur: {
     width: '100%',

@@ -8,6 +8,8 @@ import {
   View,
   type ListRenderItem,
 } from 'react-native';
+import { LinearGradient } from 'expo-linear-gradient';
+import { Colors } from '../theme';
 
 type ArtistCard = {
   id: string;
@@ -40,6 +42,12 @@ export default function SeeAllTrendingScreen({ navigation, route }: any) {
 
   return (
     <View style={styles.container}>
+      <LinearGradient
+        colors={Colors.backgroundGradient}
+        start={{ x: 0, y: 0 }}
+        end={{ x: 1, y: 1 }}
+        style={StyleSheet.absoluteFill}
+      />
       <FlatList
         data={artists}
         keyExtractor={(item) => item.id}
@@ -60,7 +68,7 @@ export default function SeeAllTrendingScreen({ navigation, route }: any) {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#000',
+    backgroundColor: 'transparent',
   },
   content: {
     padding: 16,
