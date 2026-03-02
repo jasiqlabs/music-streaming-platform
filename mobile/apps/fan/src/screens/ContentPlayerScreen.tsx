@@ -21,6 +21,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { createAudioPlayer, setAudioModeAsync, type AudioPlayer } from 'expo-audio';
 import { useConnectivity } from '../providers/ConnectivityProvider';
+import { apiV1 } from '../services/api';
 import ErrorBoundary from '../ui/ErrorBoundary';
 
 type Content = {
@@ -30,6 +31,8 @@ type Content = {
   description: string;
   thumbnail: string;
   isLocked: boolean;
+  artistId?: string;
+  mediaUrl?: string | null;
 };
 
 export default function ContentPlayerScreen({ navigation, route }: any) {
@@ -62,21 +65,31 @@ export default function ContentPlayerScreen({ navigation, route }: any) {
       try {
         setIsLoading(true);
 
-        // API-ready: replace this block later with:
-        // const res = await apiV1.get(`/content/${contentId}`)
-        // setCurrentContent(res.data)
-        const mock: Content = {
-          id: typeof contentId === 'string' && contentId.length > 0 ? contentId : '1',
-          title: 'Secret Melody',
-          artist: 'Luna Ray',
-          description:
-            'Experience a serene and mystical journey with\n the soothing melodies of Luna Ray.',
-          thumbnail:
-            'https://images.unsplash.com/photo-1464863979621-258859e62245?auto=format&fit=crop&w=1400&q=80',
-          isLocked: false,
+        const id = typeof contentId === 'string' && contentId.length > 0 ? contentId : '';
+        if (!id) {
+          if (mounted) setCurrentContent(null);
+          return;
+        }
+
+        const res = await apiV1.get(`/content/${encodeURIComponent(id)}`);
+        const c = res.data?.content ?? null;
+        if (!c) {
+          if (mounted) setCurrentContent(null);
+          return;
+        }
+
+        const next: Content = {
+          id: String(c.id),
+          title: (c.title ?? 'Untitled').toString(),
+          artist: (c.artistName ?? c.artist_name ?? 'Artist').toString(),
+          description: (c.type ?? '').toString(),
+          thumbnail: (c.artwork ?? c.thumbnailUrl ?? '').toString(),
+          isLocked: Boolean(c.isLocked ?? c.locked ?? false),
+          artistId: c.artistId !== undefined && c.artistId !== null ? String(c.artistId) : undefined,
+          mediaUrl: c.mediaUrl ? String(c.mediaUrl) : null,
         };
 
-        if (mounted) setCurrentContent(mock);
+        if (mounted) setCurrentContent(next);
       } finally {
         if (mounted) setIsLoading(false);
       }
@@ -93,6 +106,17 @@ export default function ContentPlayerScreen({ navigation, route }: any) {
 
     (async () => {
       if (!currentContent) return;
+
+      if (currentContent.isLocked) {
+        navigation.replace('SubscriptionFlow', {
+          artistId: currentContent.artistId,
+          artistName: currentContent.artist,
+          contentId: currentContent.id,
+          artwork: currentContent.thumbnail,
+        });
+        return;
+      }
+
       try {
         setMediaError(null);
         setIsPlaying(false);
@@ -117,7 +141,9 @@ export default function ContentPlayerScreen({ navigation, route }: any) {
         }
 
         // Future: POST /v1/stream/access to get signed URL before starting the audio.
-        const demoUrl = 'https://www.soundhelix.com/examples/mp3/SoundHelix-Song-1.mp3';
+        const demoUrl =
+          (currentContent.mediaUrl ?? '').toString() ||
+          'https://www.soundhelix.com/examples/mp3/SoundHelix-Song-1.mp3';
 
         let player: AudioPlayer;
         try {

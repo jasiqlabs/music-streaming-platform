@@ -176,6 +176,16 @@ export default function ArtistScreen({ navigation, route }: any) {
     const match = songs.find((s) => s.id === initialMediaId);
     if (!match) return;
 
+    if (match.locked && !isUnlocked) {
+      navigation.navigate('SubscriptionFlow', {
+        artistId: artist.id,
+        artistName: artist.name,
+        contentId: match.id,
+        artwork: match.thumbnail,
+      });
+      return;
+    }
+
     if (match.mediaType === 'audio') setActiveTab('Audio');
     if (match.mediaType === 'video') setActiveTab('Video');
 
@@ -185,6 +195,7 @@ export default function ArtistScreen({ navigation, route }: any) {
         id: s.id,
         title: s.title,
         artistName: s.artist,
+        artistId: artist.id,
         mediaType: s.mediaType,
         artworkUrl: s.thumbnail,
         mediaUrl: s.mediaUrl,
@@ -230,9 +241,11 @@ export default function ArtistScreen({ navigation, route }: any) {
     }
     
     if (song.locked && !isUnlocked) {
-      navigation.navigate('ArtistSubscription', {
-        song: song,
-        coverImage: artist.coverImage,
+      navigation.navigate('SubscriptionFlow', {
+        artistId: artist.id,
+        artistName: artist.name,
+        contentId: song.id,
+        artwork: song.thumbnail,
       });
       return;
     }
@@ -242,6 +255,7 @@ export default function ArtistScreen({ navigation, route }: any) {
         id: s.id,
         title: s.title,
         artistName: s.artist,
+        artistId: artist.id,
         mediaType: s.mediaType,
         artworkUrl: s.thumbnail,
         mediaUrl: s.mediaUrl,

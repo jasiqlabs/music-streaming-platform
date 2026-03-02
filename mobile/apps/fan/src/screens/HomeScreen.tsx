@@ -55,6 +55,7 @@ type ApiContentItem = {
   artwork?: string | null;
   thumbnailUrl?: string | null;
   locked?: boolean;
+  isLocked?: boolean;
   artistName?: string | null;
   artistId?: string | number | null;
   createdAt?: string | null;
@@ -128,7 +129,7 @@ export default function HomeScreen({ navigation }: any) {
                 artistId: artistId ? String(artistId) : undefined,
                 description: (it.type || '').toString(),
                 thumbnail: thumb || FALLBACK_THUMBNAIL,
-                isLocked: Boolean(it.locked),
+                isLocked: Boolean(it.locked ?? it.isLocked ?? false),
                 createdAt: (it.createdAt ?? null) as any,
                 mediaType,
               };
@@ -179,16 +180,16 @@ export default function HomeScreen({ navigation }: any) {
 
   const onPressContent = (item: ContentCard) => {
     if (item.isLocked) {
-      navigation.navigate('ArtistSubscription', {
-        song: {
-          id: item.id,
-          title: item.title,
-          artist: item.artist,
-          duration: '3:12',
-          thumbnail: item.thumbnail,
-          locked: true,
-        },
-        coverImage: item.thumbnail,
+      const resolvedArtistId =
+        (item.artistId || '').toString() ||
+        artistNameToId.get((item.artist || '').toString().trim().toLowerCase()) ||
+        '';
+
+      navigation.navigate('SubscriptionFlow', {
+        artistId: resolvedArtistId || undefined,
+        artistName: item.artist,
+        contentId: item.id,
+        artwork: item.thumbnail,
       });
       return;
     }

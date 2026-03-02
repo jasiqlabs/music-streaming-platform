@@ -53,13 +53,25 @@ model users {
 }
 
 model transactions {
-  id          Int      @id @default(autoincrement())
-  user_id     Int
-  date        DateTime @default(now()) @db.Timestamp(6)
-  amount      Int
-  status      String   @db.VarChar(30)
-  artist_name String   @db.VarChar(120)
-  user        users    @relation(fields: [user_id], references: [id], onDelete: Cascade)
+  id                  Int      @id @default(autoincrement())
+  user_id             Int
+  // Razorpay Fields
+  razorpay_order_id   String   @unique @db.VarChar(100)
+  razorpay_payment_id String?  @unique @db.VarChar(100)
+  razorpay_signature  String?  @db.Text
+  
+  amount              Int      // Amount in paise
+  currency            String   @default("INR") @db.VarChar(10)
+  
+  // Status: CREATED, CAPTURED, FAILED
+  status              String   @db.VarChar(30) 
+  artist_name         String   @db.VarChar(120)
+  
+  // Truthful UX: Confirmation timestamp
+  payment_confirmed_at DateTime? @db.Timestamptz(6)
+  
+  date                DateTime @default(now()) @db.Timestamp(6)
+  user                users    @relation(fields: [user_id], references: [id], onDelete: Cascade)
 
   @@index([user_id])
 }
@@ -92,12 +104,20 @@ model content_items {
 }
 
 model subscriptions {
-  id         Int      @id @default(autoincrement())
-  user_id    Int
-  artist_id  Int
-  status     String   @default("ACTIVE") @db.VarChar(20)
-  created_at DateTime @default(now()) @db.Timestamptz(6)
-  updated_at DateTime @default(now()) @db.Timestamptz(6)
+  id          Int      @id @default(autoincrement())
+  user_id     Int
+  artist_id   Int
+  // Status: ACTIVE, EXPIRED, CANCELLED, PENDING
+  status      String   @default("PENDING") @db.VarChar(20) 
+  plan_type   String   @default("MONTHLY") @db.VarChar(20)
+  
+  // Dates for Subscription Detail screen
+  start_date  DateTime @default(now()) @db.Timestamptz(6)
+  end_date    DateTime @db.Timestamptz(6) // Renewal date calculation ke liye
+  auto_renew  Boolean  @default(true)
+
+  created_at  DateTime @default(now()) @db.Timestamptz(6)
+  updated_at  DateTime @default(now()) @db.Timestamptz(6)
 
   user users @relation(fields: [user_id], references: [id], onDelete: Cascade)
 
@@ -105,6 +125,7 @@ model subscriptions {
   @@index([artist_id])
   @@unique([user_id, artist_id])
 }
+
 
 model playback_history {
   id        Int      @id @default(autoincrement())

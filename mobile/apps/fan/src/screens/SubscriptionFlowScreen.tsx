@@ -1,7 +1,9 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
+  Alert,
   ImageBackground,
+  Modal,
   Pressable,
   StyleSheet,
   Text,
@@ -12,8 +14,9 @@ import { BlurView } from 'expo-blur';
 import { LinearGradient } from 'expo-linear-gradient';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useBottomTabBarHeight } from '@react-navigation/bottom-tabs';
-import { BadgeCheck, Check, Pause, Play } from 'lucide-react-native';
+import { BadgeCheck, Check, CreditCard, Pause, Play } from 'lucide-react-native';
 import ErrorBoundary from '../ui/ErrorBoundary';
+import { apiV1 } from '../services/api';
 
 type PaymentStep = 'OFFER' | 'PROCESSING' | 'SUCCESS';
 
@@ -23,6 +26,17 @@ type RouteParams = {
   contentId?: string;
   artwork?: string;
 };
+
+function formatRenewDate(value: unknown): string {
+  if (!value) return '';
+  const d = new Date(String(value));
+  if (Number.isNaN(d.getTime())) return '';
+  try {
+    return d.toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: '2-digit' });
+  } catch {
+    return d.toISOString().slice(0, 10);
+  }
+}
 
 export default function SubscriptionFlowScreen({ navigation, route }: any) {
   const tabBarHeight = useBottomTabBarHeight();
@@ -38,6 +52,13 @@ export default function SubscriptionFlowScreen({ navigation, route }: any) {
 
   const [paymentStep, setPaymentStep] = useState<PaymentStep>('OFFER');
 
+  const [mockModalVisible, setMockModalVisible] = useState(false);
+  const [selectedPaymentMethod, setSelectedPaymentMethod] = useState<'card' | 'upi' | 'netbanking'>('card');
+  const [orderId, setOrderId] = useState<string | null>(null);
+  const [isCreatingOrder, setIsCreatingOrder] = useState(false);
+  const [isVerifyingPayment, setIsVerifyingPayment] = useState(false);
+  const [processingMessage, setProcessingMessage] = useState('Payment received. Confirming…');
+
   const [miniIsPlaying, setMiniIsPlaying] = useState(false);
   const miniProgress = useMemo(() => 0.4, []);
 
@@ -46,17 +67,96 @@ export default function SubscriptionFlowScreen({ navigation, route }: any) {
   }, [paymentStep]);
 
   useEffect(() => {
-    if (paymentStep !== 'PROCESSING') return;
-    console.log('[SubscriptionFlow] Moving to SUCCESS (simulated webhook)');
-    const t = setTimeout(() => {
-      setPaymentStep('SUCCESS');
-    }, 3000);
-    return () => clearTimeout(t);
-  }, [paymentStep]);
+    if (!isVerifyingPayment) return;
 
-  const onSubscribePress = () => {
-    console.log('[SubscriptionFlow] Moving to PROCESSING');
-    setPaymentStep('PROCESSING');
+    setProcessingMessage('Payment received. Confirming…');
+
+    const t = setTimeout(() => {
+      setProcessingMessage('We’re still confirming. Check again in a minute.');
+    }, 5000);
+
+    return () => clearTimeout(t);
+  }, [isVerifyingPayment]);
+
+  const createMockOrder = async () => {
+    if (isCreatingOrder || isVerifyingPayment) return;
+
+    try {
+      setIsCreatingOrder(true);
+
+      const amountPaise = 49900;
+      const res = await apiV1.post('/subscriptions/mock-order', {
+        amount: amountPaise,
+        artistName,
+        paymentMethod: selectedPaymentMethod,
+      });
+
+      const nextOrderId = (res.data?.order?.id ?? '').toString();
+      if (!nextOrderId) {
+        throw new Error('Mock order creation succeeded but order id was missing');
+      }
+
+      setOrderId(nextOrderId);
+      setMockModalVisible(true);
+    } catch (err: any) {
+      Alert.alert('Payment Error', err?.message || 'Failed to create mock order');
+    } finally {
+      setIsCreatingOrder(false);
+    }
+  };
+
+  const verifyMockPayment = async () => {
+    if (!orderId) {
+      Alert.alert('Payment Error', 'Missing mock order id');
+      return;
+    }
+
+    const artistIdNumber = Number(artistId);
+    if (!Number.isFinite(artistIdNumber) || artistIdNumber <= 0) {
+      Alert.alert('Payment Error', 'Invalid artist id for verification');
+      return;
+    }
+
+    try {
+      setMockModalVisible(false);
+      setPaymentStep('PROCESSING');
+      setIsVerifyingPayment(true);
+
+      const res = await apiV1.post('/subscriptions/mock-verify', {
+        razorpay_order_id: orderId,
+        artist_id: artistIdNumber,
+        paymentMethod: selectedPaymentMethod,
+      });
+
+      const renewDate = formatRenewDate(res.data?.subscription?.end_date);
+
+      const parentNav = typeof navigation?.getParent === 'function' ? navigation.getParent() : null;
+      const targetArtistId = String(artistIdNumber);
+
+      if (parentNav?.navigate) {
+        parentNav.navigate('LibraryTab', {
+          screen: 'SubscriptionDetail',
+          params: {
+            artistId: targetArtistId,
+            status: 'Active',
+            renewDate,
+          },
+        });
+      } else {
+        navigation.navigate('SubscriptionDetail', {
+          artistId: targetArtistId,
+          status: 'Active',
+          renewDate,
+        });
+      }
+
+      setPaymentStep('SUCCESS');
+    } catch (err: any) {
+      setPaymentStep('OFFER');
+      Alert.alert('Payment Failed', err?.message || 'Mock payment verification failed');
+    } finally {
+      setIsVerifyingPayment(false);
+    }
   };
 
   const onStartListening = () => {
@@ -98,24 +198,123 @@ export default function SubscriptionFlowScreen({ navigation, route }: any) {
                   </View>
                 </View>
 
-                <Pressable style={styles.primaryBtn} onPress={onSubscribePress}>
+                <Pressable style={styles.primaryBtn} onPress={createMockOrder} disabled={isCreatingOrder}>
                   <LinearGradient
                     colors={['rgba(255,122,24,0.45)', 'rgba(255,122,24,0.20)']}
                     style={styles.primaryBtnInner}
                   >
-                    <Text style={styles.primaryBtnText}>Subscribe</Text>
+                    <Text style={styles.primaryBtnText}>
+                      {isCreatingOrder ? 'Creating Order...' : 'Pay Now'}
+                    </Text>
                   </LinearGradient>
                 </Pressable>
               </BlurView>
             </View>
           ) : null}
 
+          <Modal
+            visible={mockModalVisible}
+            transparent
+            animationType="fade"
+            onRequestClose={() => {
+              if (isVerifyingPayment) return;
+              setMockModalVisible(false);
+            }}
+          >
+            <View style={styles.modalOverlay}>
+              <View style={styles.modalCard}>
+                <Text style={styles.modalTitle}>Select Payment Method</Text>
+                <Text style={styles.modalSubtitle} numberOfLines={2}>
+                  Order: {orderId ?? '-'}
+                </Text>
+
+                <View style={styles.paymentMethodsWrap}>
+                  <Pressable
+                    style={[
+                      styles.paymentMethod,
+                      selectedPaymentMethod === 'card' && styles.paymentMethodSelected
+                    ]}
+                    onPress={() => setSelectedPaymentMethod('card')}
+                  >
+                    <CreditCard 
+                      color={selectedPaymentMethod === 'card' ? '#FF7A18' : '#fff'} 
+                      size={20} 
+                    />
+                    <Text style={[
+                      styles.paymentMethodText,
+                      selectedPaymentMethod === 'card' && styles.paymentMethodTextSelected
+                    ]}>
+                      Card
+                    </Text>
+                  </Pressable>
+
+                  <Pressable
+                    style={[
+                      styles.paymentMethod,
+                      selectedPaymentMethod === 'upi' && styles.paymentMethodSelected
+                    ]}
+                    onPress={() => setSelectedPaymentMethod('upi')}
+                  >
+                    <View style={styles.upiIcon}>
+                      <Text style={styles.upiIconText}>UPI</Text>
+                    </View>
+                    <Text style={[
+                      styles.paymentMethodText,
+                      selectedPaymentMethod === 'upi' && styles.paymentMethodTextSelected
+                    ]}>
+                      UPI
+                    </Text>
+                  </Pressable>
+
+                  <Pressable
+                    style={[
+                      styles.paymentMethod,
+                      selectedPaymentMethod === 'netbanking' && styles.paymentMethodSelected
+                    ]}
+                    onPress={() => setSelectedPaymentMethod('netbanking')}
+                  >
+                    <View style={styles.netbankingIcon}>
+                      <Text style={styles.netbankingIconText}>NB</Text>
+                    </View>
+                    <Text style={[
+                      styles.paymentMethodText,
+                      selectedPaymentMethod === 'netbanking' && styles.paymentMethodTextSelected
+                    ]}>
+                      Netbanking
+                    </Text>
+                  </Pressable>
+                </View>
+
+                <Pressable
+                  style={[styles.modalBtn, styles.modalBtnSuccess]}
+                  onPress={verifyMockPayment}
+                  disabled={isVerifyingPayment}
+                >
+                  <Text style={styles.modalBtnText}>
+                    Pay $4.99 with {selectedPaymentMethod === 'card' ? 'Card' : selectedPaymentMethod === 'upi' ? 'UPI' : 'Netbanking'}
+                  </Text>
+                </Pressable>
+
+                <Pressable
+                  style={[styles.modalBtn, styles.modalBtnNeutral]}
+                  onPress={() => {
+                    if (isVerifyingPayment) return;
+                    setMockModalVisible(false);
+                  }}
+                  disabled={isVerifyingPayment}
+                >
+                  <Text style={styles.modalBtnText}>Cancel</Text>
+                </Pressable>
+              </View>
+            </View>
+          </Modal>
+
           {paymentStep === 'PROCESSING' ? (
             <View style={styles.processingWrap}>
               <View style={styles.spinnerWrap}>
                 <ActivityIndicator size="large" color="#FF7A18" />
               </View>
-              <Text style={styles.processingText}>Payment received, confirming...</Text>
+              <Text style={styles.processingText}>{processingMessage}</Text>
             </View>
           ) : null}
 
@@ -173,6 +372,122 @@ const styles = StyleSheet.create({
   },
   bg: {
     flex: 1,
+  },
+
+  modalOverlay: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 22,
+    backgroundColor: 'rgba(0,0,0,0.70)',
+  },
+  modalCard: {
+    width: '100%',
+    maxWidth: 360,
+    borderRadius: 18,
+    padding: 18,
+    backgroundColor: 'rgba(18,18,18,0.98)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.10)',
+  },
+  modalTitle: {
+    color: '#fff',
+    fontSize: 18,
+    fontWeight: '900',
+    letterSpacing: 0.2,
+  },
+  modalSubtitle: {
+    color: 'rgba(255,255,255,0.65)',
+    fontSize: 12,
+    fontWeight: '700',
+    marginTop: 8,
+    marginBottom: 14,
+  },
+  modalBtn: {
+    height: 48,
+    borderRadius: 14,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+    marginTop: 10,
+  },
+  modalBtnSuccess: {
+    backgroundColor: 'rgba(0,200,120,0.14)',
+    borderColor: 'rgba(0,200,120,0.35)',
+  },
+  modalBtnFailure: {
+    backgroundColor: 'rgba(255,80,80,0.14)',
+    borderColor: 'rgba(255,80,80,0.35)',
+  },
+  modalBtnNeutral: {
+    backgroundColor: 'rgba(255,255,255,0.06)',
+    borderColor: 'rgba(255,255,255,0.12)',
+  },
+  modalBtnText: {
+    color: 'rgba(255,255,255,0.88)',
+    fontSize: 14,
+    fontWeight: '800',
+    letterSpacing: 0.2,
+  },
+
+  // Payment Method Styles
+  paymentMethodsWrap: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    marginVertical: 20,
+  },
+  paymentMethod: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 16,
+    paddingHorizontal: 8,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.15)',
+    backgroundColor: 'rgba(255,255,255,0.03)',
+    marginHorizontal: 4,
+  },
+  paymentMethodSelected: {
+    borderColor: '#FF7A18',
+    backgroundColor: 'rgba(255,122,24,0.1)',
+  },
+  paymentMethodText: {
+    color: 'rgba(255,255,255,0.7)',
+    fontSize: 12,
+    fontWeight: '600',
+    marginTop: 8,
+  },
+  paymentMethodTextSelected: {
+    color: '#FF7A18',
+  },
+  upiIcon: {
+    width: 32,
+    height: 20,
+    borderRadius: 4,
+    backgroundColor: '#fff',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  upiIconText: {
+    color: '#000',
+    fontSize: 10,
+    fontWeight: '800',
+    letterSpacing: 0.5,
+  },
+  netbankingIcon: {
+    width: 32,
+    height: 20,
+    borderRadius: 4,
+    backgroundColor: '#fff',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  netbankingIconText: {
+    color: '#000',
+    fontSize: 9,
+    fontWeight: '800',
+    letterSpacing: 0.3,
   },
 
   offerWrap: {

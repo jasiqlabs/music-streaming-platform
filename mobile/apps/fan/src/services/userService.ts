@@ -1,3 +1,5 @@
+import { apiV1 } from './api';
+
 export type AudioQualityPref = 'HIGH' | 'DATA SAVER';
 
 export type UserProfile = {
@@ -7,6 +9,13 @@ export type UserProfile = {
   profileImageUrl?: string;
   pushNotifications: boolean;
   audioQuality: AudioQualityPref;
+};
+
+export type SubscriptionPlanSummary = {
+  status: string;
+  planType: string;
+  endDate: string | null;
+  artistId: string | null;
 };
 
 export type Transaction = {
@@ -37,86 +46,73 @@ export interface UserService {
   getUserProfile(): Promise<Pick<UserProfile, 'name' | 'isPremium' | 'subscriptionCount'>>;
   getTransactions(): Promise<Transaction[]>;
   getListenTime(): Promise<ListenTime>;
+  getSubscriptionPlanSummary(): Promise<SubscriptionPlanSummary | null>;
   updateProfile(input: UpdateProfileInput): Promise<UserProfile>;
   updateSettings(input: UpdateSettingsInput): Promise<UserProfile>;
 }
 
-function delay(ms: number) {
-  return new Promise<void>((resolve) => setTimeout(resolve, ms));
-}
-
-let mockState: {
-  profile: UserProfile;
-  transactions: Transaction[];
-  listenTime: ListenTime;
-} = {
-  profile: {
-    name: 'User',
-    isPremium: true,
-    subscriptionCount: 3,
-    pushNotifications: true,
-    audioQuality: 'HIGH',
-    profileImageUrl: '',
-  },
-  transactions: [
-    {
-      id: 'tx_123',
-      amount: 4.99,
-      artistName: 'Luna Ray',
-      date: '2026-02-17',
-      status: 'SUCCESS',
-    },
-  ],
-  listenTime: {
-    totalMinutes: 1240,
-    formattedTime: '20.6 Hours',
-  },
-};
-
 export const userService: UserService = {
   async getUserProfile() {
-    await delay(500);
-    const { name, isPremium, subscriptionCount } = mockState.profile;
-    return { name, isPremium, subscriptionCount };
+    const res = await apiV1.get('/user/profile');
+    const profile = res.data?.profile ?? {};
+    const premium = res.data?.premium ?? {};
+    return {
+      name: (profile.name ?? 'User').toString(),
+      isPremium: Boolean(premium.isPremium ?? false),
+      subscriptionCount: Number(premium.subscriptionCount ?? 0),
+    };
   },
 
   async getTransactions() {
-    await delay(500);
-    return [...mockState.transactions];
+    const res = await apiV1.get('/user/transactions');
+    const raw = Array.isArray(res.data?.transactions) ? res.data.transactions : [];
+    return raw.map((tx: any) => ({
+      id: String(tx.id),
+      amount: Number(tx.amount ?? 0),
+      artistName: (tx.artistName ?? tx.artist_name ?? '').toString(),
+      date: (tx.date ?? '').toString(),
+      status: (tx.status ?? '').toString(),
+    }));
   },
 
   async getListenTime() {
-    await delay(500);
-    return { ...mockState.listenTime };
+    // Backend does not currently expose listen-time; keep a safe default.
+    return { totalMinutes: 0, formattedTime: '—' };
+  },
+
+  async getSubscriptionPlanSummary() {
+    const res = await apiV1.get('/subscriptions/summary');
+    const plan = res.data?.plan ?? null;
+    if (!plan) return null;
+    return {
+      status: (plan.status ?? '').toString(),
+      planType: (plan.plan_type ?? plan.planType ?? '').toString() || 'MONTHLY',
+      endDate: plan.end_date ? String(plan.end_date) : null,
+      artistId: plan.artist_id !== undefined && plan.artist_id !== null ? String(plan.artist_id) : null,
+    };
   },
 
   async updateProfile(input: UpdateProfileInput) {
-    await delay(500);
-
-    mockState = {
-      ...mockState,
-      profile: {
-        ...mockState.profile,
-        name: input.name ?? mockState.profile.name,
-        profileImageUrl: input.profileImageUrl ?? mockState.profile.profileImageUrl,
-      },
+    // Not implemented on backend yet.
+    return {
+      name: (input.name ?? 'User').toString(),
+      isPremium: false,
+      subscriptionCount: 0,
+      pushNotifications: true,
+      audioQuality: 'HIGH',
+      profileImageUrl: input.profileImageUrl ?? '',
     };
-
-    return { ...mockState.profile };
   },
 
   async updateSettings(input: UpdateSettingsInput) {
-    await delay(500);
-
-    mockState = {
-      ...mockState,
-      profile: {
-        ...mockState.profile,
-        pushNotifications: input.pushNotifications ?? mockState.profile.pushNotifications,
-        audioQuality: input.audioQuality ?? mockState.profile.audioQuality,
-      },
+    // Not implemented on backend yet.
+    return {
+      name: 'User',
+      isPremium: false,
+      subscriptionCount: 0,
+      pushNotifications: input.pushNotifications ?? true,
+      audioQuality: input.audioQuality ?? 'HIGH',
+      profileImageUrl: '',
     };
-
-    return { ...mockState.profile };
   },
 };

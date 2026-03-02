@@ -34,6 +34,11 @@ type Mini = {
 export default function SubscriptionDetail({ navigation, route }: any) {
   const tabBarHeight = useBottomTabBarHeight();
   const artistId: string = String(route?.params?.artistId ?? 'luna-ray');
+  const incomingStatusRaw = route?.params?.status;
+  const incomingRenewDateRaw = route?.params?.renewDate;
+  const incomingStatus: SubDetail['status'] | null =
+    incomingStatusRaw === 'Active' || incomingStatusRaw === 'Canceled' ? incomingStatusRaw : null;
+  const incomingRenewDate = typeof incomingRenewDateRaw === 'string' ? incomingRenewDateRaw : null;
 
   const [detail, setDetail] = useState<SubDetail | null>(null);
   const [cancelOpen, setCancelOpen] = useState(false);
@@ -83,7 +88,12 @@ export default function SubscriptionDetail({ navigation, route }: any) {
       },
     };
 
-    setDetail(mockById[artistId] ?? mockById['luna-ray']);
+    const base = mockById[artistId] ?? mockById['luna-ray'];
+    setDetail({
+      ...base,
+      status: incomingStatus ?? base.status,
+      renewDate: incomingRenewDate ?? base.renewDate,
+    });
   }, [artistId]);
 
   if (!detail) return <View style={styles.container} />;

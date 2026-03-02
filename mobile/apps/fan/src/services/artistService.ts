@@ -79,6 +79,7 @@ export type ApiArtistContentItem = {
   mediaUrl?: string | null;
   fileUrl?: string | null;
   locked?: boolean;
+  isLocked?: boolean;
 };
 
 export type ArtistMediaItem = {
@@ -115,7 +116,7 @@ export async function fetchArtistMedia(artistId: string): Promise<ArtistMediaIte
         mediaType,
         artworkUrl,
         mediaUrl,
-        locked: Boolean(it.locked),
+        locked: Boolean(it.isLocked ?? it.locked ?? false),
       };
 
       return item;

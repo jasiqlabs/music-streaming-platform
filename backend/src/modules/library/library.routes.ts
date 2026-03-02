@@ -11,6 +11,10 @@ const ensureSubscriptionsSchema = async () => {
       user_id INT NOT NULL,
       artist_id INT NOT NULL,
       status VARCHAR(20) NOT NULL DEFAULT 'ACTIVE',
+      plan_type VARCHAR(20) NOT NULL DEFAULT 'MONTHLY',
+      start_date TIMESTAMPTZ NOT NULL DEFAULT now(),
+      end_date TIMESTAMPTZ,
+      auto_renew BOOLEAN NOT NULL DEFAULT true,
       created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
       updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
       UNIQUE(user_id, artist_id)
@@ -21,6 +25,16 @@ const ensureSubscriptionsSchema = async () => {
   await pool.query("ALTER TABLE subscriptions ADD COLUMN IF NOT EXISTS artist_id INT");
   await pool.query(
     "ALTER TABLE subscriptions ADD COLUMN IF NOT EXISTS status VARCHAR(20) NOT NULL DEFAULT 'ACTIVE'"
+  );
+  await pool.query(
+    "ALTER TABLE subscriptions ADD COLUMN IF NOT EXISTS plan_type VARCHAR(20) NOT NULL DEFAULT 'MONTHLY'"
+  );
+  await pool.query(
+    "ALTER TABLE subscriptions ADD COLUMN IF NOT EXISTS start_date TIMESTAMPTZ NOT NULL DEFAULT now()"
+  );
+  await pool.query("ALTER TABLE subscriptions ADD COLUMN IF NOT EXISTS end_date TIMESTAMPTZ");
+  await pool.query(
+    "ALTER TABLE subscriptions ADD COLUMN IF NOT EXISTS auto_renew BOOLEAN NOT NULL DEFAULT true"
   );
   await pool.query(
     "ALTER TABLE subscriptions ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ NOT NULL DEFAULT now()"
@@ -121,6 +135,7 @@ router.get("/subscribed-artists", requireAuth, async (req: any, res) => {
        JOIN users u ON u.id = s.artist_id
        WHERE s.user_id = $1
          AND UPPER(COALESCE(s.status, 'ACTIVE')) = 'ACTIVE'
+         AND (s.end_date IS NULL OR s.end_date > now())
          AND UPPER(COALESCE(u.role, '')) = 'ARTIST'
          AND COALESCE(u.status, 'ACTIVE') = 'ACTIVE'
        ORDER BY s.updated_at DESC, s.created_at DESC

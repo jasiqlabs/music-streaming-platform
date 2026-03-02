@@ -16,7 +16,7 @@ import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context'
 import { CommonActions, useNavigation } from '@react-navigation/native';
 import { useAuth } from '../store/authStore';
 import { CreditCard, HelpCircle, LogOut, User } from 'lucide-react-native';
-import { userService, type AudioQualityPref, type Transaction } from '../services/userService';
+import { userService, type AudioQualityPref, type SubscriptionPlanSummary, type Transaction } from '../services/userService';
 import { JWT_STORAGE_KEY } from '../services/api';
 import { resetToLogin } from '../navigation/rootNavigation';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -70,6 +70,7 @@ export default function AccountScreen() {
   const [profileName, setProfileName] = React.useState<string>('');
   const [isPremium, setIsPremium] = React.useState(false);
   const [subscriptionCount, setSubscriptionCount] = React.useState(0);
+  const [planSummary, setPlanSummary] = React.useState<SubscriptionPlanSummary | null>(null);
 
   const [listenTime, setListenTime] = React.useState<string>('');
   const [transactions, setTransactions] = React.useState<Transaction[]>([]);
@@ -88,10 +89,11 @@ export default function AccountScreen() {
   const refresh = React.useCallback(async () => {
     setIsLoading(true);
     try {
-      const [p, t, l] = await Promise.all([
+      const [p, t, l, plan] = await Promise.all([
         userService.getUserProfile(),
         userService.getTransactions(),
         userService.getListenTime(),
+        userService.getSubscriptionPlanSummary(),
       ]);
 
       setProfileName(p.name);
@@ -99,10 +101,30 @@ export default function AccountScreen() {
       setSubscriptionCount(p.subscriptionCount);
       setTransactions(t);
       setListenTime(l.formattedTime);
+      setPlanSummary(plan);
     } finally {
       setIsLoading(false);
     }
   }, []);
+
+  const planStatusText = React.useMemo(() => {
+    const raw = (planSummary?.status ?? '').toString().toUpperCase();
+    if (raw === 'ACTIVE') return 'Active';
+    if (!raw) return '—';
+    return raw;
+  }, [planSummary?.status]);
+
+  const planEndDateText = React.useMemo(() => {
+    const raw = planSummary?.endDate;
+    if (!raw) return '—';
+    const d = new Date(String(raw));
+    if (Number.isNaN(d.getTime())) return '—';
+    try {
+      return d.toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: '2-digit' });
+    } catch {
+      return d.toISOString().slice(0, 10);
+    }
+  }, [planSummary?.endDate]);
 
   React.useEffect(() => {
     refresh();
@@ -226,6 +248,39 @@ export default function AccountScreen() {
             <TouchableOpacity style={styles.primaryButton} onPress={openEditProfile} disabled={isLoading}>
               <Text style={styles.primaryButtonText}>Edit Profile</Text>
             </TouchableOpacity>
+          </View>
+        </View>
+
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>Current Plan</Text>
+          <View style={styles.statusCard}>
+            <View style={styles.statusLeft}>
+              <CreditCard size={20} color="#fff" />
+              <View style={styles.statusInfo}>
+                <Text style={styles.statusLabel}>Status</Text>
+                <Text style={[styles.statusValue, { color: '#10B981' }]}>{planStatusText}</Text>
+              </View>
+            </View>
+          </View>
+
+          <View style={[styles.statusCard, { marginTop: 10 }]}>
+            <View style={styles.statusLeft}>
+              <CreditCard size={20} color="#fff" />
+              <View style={styles.statusInfo}>
+                <Text style={styles.statusLabel}>Plan</Text>
+                <Text style={styles.statusValue}>{(planSummary?.planType ?? '—').toString()}</Text>
+              </View>
+            </View>
+          </View>
+
+          <View style={[styles.statusCard, { marginTop: 10 }]}>
+            <View style={styles.statusLeft}>
+              <CreditCard size={20} color="#fff" />
+              <View style={styles.statusInfo}>
+                <Text style={styles.statusLabel}>Renews</Text>
+                <Text style={styles.statusValue}>{planEndDateText}</Text>
+              </View>
+            </View>
           </View>
         </View>
 

@@ -1,5 +1,6 @@
 import { Router } from "express";
 import { pool } from "../../common/db";
+import { checkContentAccess } from "../../common/accessControl";
 
 const router = Router();
 
@@ -52,10 +53,17 @@ const toAbsoluteUrl = (req: any, value: any) => {
   return `${baseUrl}/${raw}`;
 };
 
+const restrictedMediaUrl = (req: any, mediaType: 'audio' | 'video') => {
+  const path = mediaType === 'video' ? '/uploads/restricted.mp4' : '/uploads/restricted.mp3';
+  return toAbsoluteUrl(req, path);
+};
+
 router.get("/", (req, res) => {
   (async () => {
     try {
       await ensureContentSchema();
+      const userId = req.user?.id ? Number(req.user.id) : null;
+      
       const rows = await pool.query(
         `SELECT
            c.id,
@@ -64,6 +72,8 @@ router.get("/", (req, res) => {
            c.thumbnail_url,
            c.media_url,
            c.created_at,
+           c.artist_id,
+           c.subscription_required,
            COALESCE(u.name, u.email) as artist_name
          FROM content_items c
          LEFT JOIN users u ON u.id = c.artist_id
@@ -74,18 +84,29 @@ router.get("/", (req, res) => {
         []
       );
 
-      const items = (rows.rows ?? []).map((r: any) => ({
-        id: r.id,
-        title: r.title,
-        type: r.type,
-        mediaType: ((r.type ?? '').toString().toLowerCase() === 'video' ? 'video' : 'audio'),
-        thumbnailUrl: toAbsoluteUrl(req, r.thumbnail_url),
-        artwork: toAbsoluteUrl(req, r.thumbnail_url),
-        mediaUrl: toAbsoluteUrl(req, r.media_url),
-        fileUrl: toAbsoluteUrl(req, r.media_url),
-        createdAt: r.created_at,
-        artistName: r.artist_name ?? null,
-        locked: false
+      const items = await Promise.all((rows.rows ?? []).map(async (r: any) => {
+        const { isLocked } = await checkContentAccess(userId, r.id);
+        const mediaType = ((r.type ?? '').toString().toLowerCase() === 'video' ? 'video' : 'audio') as
+          | 'audio'
+          | 'video';
+        const unlockedMediaUrl = toAbsoluteUrl(req, r.media_url);
+        const finalMediaUrl = isLocked ? restrictedMediaUrl(req, mediaType) : unlockedMediaUrl;
+        
+        return {
+          id: r.id,
+          title: r.title,
+          type: r.type,
+          mediaType,
+          thumbnailUrl: toAbsoluteUrl(req, r.thumbnail_url),
+          artwork: toAbsoluteUrl(req, r.thumbnail_url),
+          mediaUrl: finalMediaUrl,
+          fileUrl: finalMediaUrl,
+          createdAt: r.created_at,
+          artistName: r.artist_name ?? null,
+          artistId: r.artist_id,
+          subscriptionRequired: Boolean(r.subscription_required),
+          isLocked
+        };
       }));
 
       return res.json({ success: true, items });
@@ -105,8 +126,10 @@ router.get("/artist/:artistId", (req, res) => {
 
     try {
       await ensureContentSchema();
+      const userId = req.user?.id ? Number(req.user.id) : null;
+      
       const rows = await pool.query(
-        `SELECT id, title, type, thumbnail_url, media_url, created_at
+        `SELECT id, title, type, thumbnail_url, media_url, created_at, subscription_required
          FROM content_items
          WHERE artist_id = $1
            AND COALESCE(is_approved, false) = true
@@ -116,9 +139,13 @@ router.get("/artist/:artistId", (req, res) => {
         [artistId]
       );
 
-      const items = (rows.rows ?? []).map((r: any) => {
+      const items = await Promise.all((rows.rows ?? []).map(async (r: any) => {
+        const { isLocked } = await checkContentAccess(userId, r.id);
         const type = (r.type ?? "").toString().toLowerCase();
         const mediaType = type === "video" ? "video" : "audio";
+        const unlockedMediaUrl = toAbsoluteUrl(req, r.media_url);
+        const finalMediaUrl = isLocked ? restrictedMediaUrl(req, mediaType) : unlockedMediaUrl;
+        
         return {
           id: r.id,
           title: r.title,
@@ -126,12 +153,13 @@ router.get("/artist/:artistId", (req, res) => {
           mediaType,
           thumbnailUrl: toAbsoluteUrl(req, r.thumbnail_url),
           artwork: toAbsoluteUrl(req, r.thumbnail_url),
-          mediaUrl: toAbsoluteUrl(req, r.media_url),
-          fileUrl: toAbsoluteUrl(req, r.media_url),
-          locked: false,
+          mediaUrl: finalMediaUrl,
+          fileUrl: finalMediaUrl,
+          subscriptionRequired: Boolean(r.subscription_required),
+          isLocked,
           createdAt: r.created_at,
         };
-      });
+      }));
 
       return res.json({ success: true, items });
     } catch (err: any) {
@@ -150,12 +178,23 @@ router.get("/:id", (req, res) => {
 
     try {
       await ensureContentSchema();
+      const userId = req.user?.id ? Number(req.user.id) : null;
+      
       const rows = await pool.query(
-        `SELECT id, title, type, thumbnail_url
-         FROM content_items
-         WHERE id = $1
-           AND COALESCE(is_approved, false) = true
-           AND UPPER(COALESCE(lifecycle_state, '')) = 'PUBLISHED'
+        `SELECT
+           c.id,
+           c.title,
+           c.type,
+           c.thumbnail_url,
+           c.media_url,
+           c.subscription_required,
+           c.artist_id,
+           COALESCE(u.name, u.email) as artist_name
+         FROM content_items c
+         LEFT JOIN users u ON u.id = c.artist_id
+         WHERE c.id = $1
+           AND COALESCE(c.is_approved, false) = true
+           AND UPPER(COALESCE(c.lifecycle_state, '')) = 'PUBLISHED'
          LIMIT 1`,
         [id]
       );
@@ -165,14 +204,26 @@ router.get("/:id", (req, res) => {
       }
 
       const r: any = rows.rows[0];
+      const { isLocked } = await checkContentAccess(userId, r.id);
+      const type = (r.type ?? '').toString().toLowerCase();
+      const mediaType = type === 'video' ? 'video' : 'audio';
+      const unlockedMediaUrl = toAbsoluteUrl(req, r.media_url);
+      const finalMediaUrl = isLocked ? restrictedMediaUrl(req, mediaType) : unlockedMediaUrl;
+      
       return res.json({
         success: true,
         content: {
           id: r.id,
           title: r.title,
           type: r.type,
-          locked: false,
-          artwork: r.thumbnail_url ?? null
+          isLocked,
+          subscriptionRequired: Boolean(r.subscription_required),
+          artistId: r.artist_id,
+          artistName: r.artist_name ?? null,
+          artwork: toAbsoluteUrl(req, r.thumbnail_url),
+          thumbnailUrl: toAbsoluteUrl(req, r.thumbnail_url),
+          mediaUrl: finalMediaUrl,
+          fileUrl: finalMediaUrl,
         }
       });
     } catch (err: any) {

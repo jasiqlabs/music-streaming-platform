@@ -1,16 +1,18 @@
 import React, {
   createContext,
+  type ReactNode,
   useCallback,
   useContext,
   useEffect,
   useMemo,
   useRef,
   useState,
-  type ReactNode,
 } from 'react';
-import { Platform } from 'react-native';
+import { Alert, Platform } from 'react-native';
 
 import { Audio, type AVPlaybackStatus, Video } from 'expo-av';
+
+import { navigationRef } from '../navigation/rootNavigation';
 
 import MediaPlayerOverlay from '../ui/MediaPlayerOverlay';
 import { recordPlayback } from '../services/libraryService';
@@ -21,6 +23,7 @@ export type MediaItem = {
   id: string;
   title: string;
   artistName?: string;
+  artistId?: string;
   mediaType: MediaType;
   artworkUrl?: string | null;
   mediaUrl: string;
@@ -331,6 +334,38 @@ export function MediaPlayerProvider({ children }: { children: ReactNode }) {
     await unloadAudio();
   }, [unloadAudio]);
 
+  const blockLockedPlayback = useCallback(
+    async (item: MediaItem) => {
+      await unloadAudio();
+      await stopVideo();
+
+      setState((s) => ({
+        ...s,
+        isPlaying: false,
+        positionMs: 0,
+        durationMs: 0,
+      }));
+
+      Alert.alert('Subscription Required', 'Subscription Required');
+
+      if (navigationRef.isReady()) {
+        (navigationRef as any).navigate('MainTabs', {
+          screen: 'HomeTab',
+          params: {
+            screen: 'SubscriptionFlow',
+            params: {
+              artistId: item.artistId,
+              artistName: item.artistName,
+              contentId: item.id,
+              artwork: item.artworkUrl ?? undefined,
+            },
+          },
+        });
+      }
+    },
+    [unloadAudio, stopVideo]
+  );
+
   const playQueue = useCallback(
     async (queue: MediaItem[], index: number) => {
       const safeIndex = Math.min(Math.max(0, index), Math.max(0, queue.length - 1));
@@ -340,6 +375,11 @@ export function MediaPlayerProvider({ children }: { children: ReactNode }) {
 
       const item = nextState.queue[nextState.currentIndex];
       if (!item) return;
+
+      if (item.isLocked) {
+        await blockLockedPlayback(item);
+        return;
+      }
 
       setState((s) => ({
         ...s,
@@ -359,12 +399,16 @@ export function MediaPlayerProvider({ children }: { children: ReactNode }) {
       setState((s) => ({ ...s, isPlaying: true }));
       // actual play is handled by Video component when it renders with shouldPlay
     },
-    [loadAndPlayAudio, prepareVideo]
+    [blockLockedPlayback, loadAndPlayAudio, prepareVideo, shuffleQueueKeepCurrent]
   );
 
   const togglePlayPause = useCallback(async () => {
-    const item = currentItem;
-    if (!item) return;
+    const item = currentItemRef.current;
+    if (item?.isLocked) {
+      await blockLockedPlayback(item);
+      return;
+    }
+    if (stateRef.current.queue.length === 0) return;
 
     if (item.mediaType === 'audio') {
       const snd = soundRef.current;

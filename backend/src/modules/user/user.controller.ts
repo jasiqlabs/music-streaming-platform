@@ -36,7 +36,20 @@ export class UserController {
         });
       }
 
-      const subscriptionCount = Number(userRow.subscription_count ?? 0);
+      let subscriptionCount = 0;
+      try {
+        const subs = await pool.query(
+          `SELECT COUNT(*)::int as c
+           FROM subscriptions
+           WHERE user_id = $1
+             AND UPPER(COALESCE(status, '')) = 'ACTIVE'
+             AND (end_date IS NULL OR end_date > now())`,
+          [userId]
+        );
+        subscriptionCount = Number(subs.rows?.[0]?.c ?? 0);
+      } catch {
+        subscriptionCount = Number(userRow.subscription_count ?? 0);
+      }
 
       return res.json({
         success: true,
@@ -73,12 +86,28 @@ export class UserController {
         });
       }
 
-      // Until the transactions table exists in the DB, return an empty list.
-      // This endpoint should still be reachable (no 404).
-      return res.json({
-        success: true,
-        transactions: []
-      });
+      try {
+        const rows = await pool.query(
+          `SELECT id, amount, artist_name, status, date
+           FROM transactions
+           WHERE user_id = $1
+           ORDER BY date DESC
+           LIMIT 50`,
+          [userId]
+        );
+
+        const transactions = (rows.rows ?? []).map((r: any) => ({
+          id: String(r.id),
+          amount: Number(r.amount ?? 0),
+          artistName: (r.artist_name ?? '').toString(),
+          date: r.date,
+          status: (r.status ?? '').toString(),
+        }));
+
+        return res.json({ success: true, transactions });
+      } catch {
+        return res.json({ success: true, transactions: [] });
+      }
     } catch {
       return res.status(500).json({
         success: false,

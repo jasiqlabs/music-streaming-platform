@@ -281,16 +281,10 @@ export default function SearchScreen({ navigation }: any) {
     }
 
     if (item.isLocked) {
-      navigateHomeStack('ArtistSubscription', {
-        song: {
-          id: item.id,
-          title: item.title,
-          artist: item.artistName,
-          duration: '3:12',
-          thumbnail: item.artwork,
-          locked: true,
-        },
-        coverImage: item.artwork,
+      navigateHomeStack('SubscriptionFlow', {
+        artistName: item.artistName,
+        contentId: item.id,
+        artwork: item.artwork,
       });
       return;
     }
