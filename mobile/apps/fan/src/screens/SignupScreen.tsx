@@ -161,7 +161,10 @@ export default function SignupScreen({ navigation }: Props) {
     >
       <StatusBar barStyle="light-content" backgroundColor="transparent" translucent />
       <SafeAreaView style={styles.safeArea} edges={['top', 'bottom']}>
-        <KeyboardAvoidingView behavior={Platform.select({ ios: 'padding' })} style={styles.overlay}>
+        <KeyboardAvoidingView
+          behavior={Platform.select({ ios: 'padding', android: 'height' })}
+          style={styles.overlay}
+        >
           <ScrollView
             contentContainerStyle={styles.scrollContent}
             keyboardShouldPersistTaps="handled"

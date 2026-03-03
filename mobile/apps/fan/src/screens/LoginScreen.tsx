@@ -4,13 +4,16 @@ import {
   ActivityIndicator,
   Alert,
   Image,
+  Keyboard,
   KeyboardAvoidingView,
   Platform,
   Pressable,
+  ScrollView,
   StatusBar,
   StyleSheet,
   Text,
   TextInput,
+  TouchableWithoutFeedback,
   useWindowDimensions,
   View,
 } from 'react-native';
@@ -32,9 +35,12 @@ export default function LoginScreen({ navigation, route }: Props) {
   const isDesktop = Platform.OS === 'web' && width > 768;
   const webViewportStyle = Platform.OS === 'web' ? { width, height } : null;
 
+  const isNative = Platform.OS === 'ios' || Platform.OS === 'android';
+
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [isPasswordVisible, setIsPasswordVisible] = useState(false);
+  const [errorText, setErrorText] = useState('');
 
   useEffect(() => {
     const prefillEmail = route?.params?.prefillEmail;
@@ -49,6 +55,13 @@ export default function LoginScreen({ navigation, route }: Props) {
   );
 
   const onSubmit = async () => {
+    setErrorText('');
+
+    if (!email.trim() || !password) {
+      setErrorText('Please enter your email and password.');
+      return;
+    }
+
     try {
       await login(email.trim(), password);
     } catch (err: any) {
@@ -62,7 +75,8 @@ export default function LoginScreen({ navigation, route }: Props) {
             : status === 401
               ? 'Invalid credentials.'
               : err?.message || 'Login failed';
-      Alert.alert('Login Error', message);
+      setErrorText(message);
+      if (isNative) Alert.alert('Login Error', message);
     }
   };
 
@@ -80,103 +94,238 @@ export default function LoginScreen({ navigation, route }: Props) {
       <StatusBar barStyle="light-content" backgroundColor="transparent" translucent />
       <SafeAreaView style={styles.safeArea}>
         <KeyboardAvoidingView
-          behavior={Platform.select({ ios: 'padding' })}
+          behavior={Platform.select({ ios: 'padding', android: 'height' })}
           style={styles.overlay}
         >
-          <View
-            style={[
-              styles.content,
-              isDesktop ? styles.contentDesktop : styles.contentMobile,
-            ]}
-          >
-            <Shadow
-              distance={40}
-              startColor="rgba(255, 69, 0, 0.25)"
-              offset={[0, 0]}
+          {isNative ? (
+            <TouchableWithoutFeedback onPress={Keyboard.dismiss} accessible={false}>
+              <ScrollView
+                contentContainerStyle={styles.scrollContent}
+                keyboardShouldPersistTaps="handled"
+                showsVerticalScrollIndicator={false}
+              >
+                <View
+                  style={[
+                    styles.content,
+                    isDesktop ? styles.contentDesktop : styles.contentMobile,
+                  ]}
+                >
+                  <Shadow
+                    distance={40}
+                    startColor="rgba(255, 69, 0, 0.25)"
+                    offset={[0, 0]}
+                  >
+                    <View
+                      style={[
+                        styles.logoWrapper,
+                        isDesktop && styles.logoWrapperDesktop,
+                      ]}
+                    >
+                      <Image
+                        source={require('../logo.jpg')}
+                        style={styles.logoImage}
+                        resizeMode="cover"
+                      />
+                      <LinearGradient
+                        colors={['transparent', 'rgba(0,0,0,0.4)']}
+                        style={styles.logoInnerGradient}
+                      />
+                    </View>
+                  </Shadow>
+
+                  <BlurView intensity={25} tint="dark" style={[styles.cardBlur, isDesktop && styles.cardBlurDesktop]}>
+                    <View style={[styles.cardInner, isDesktop && styles.cardInnerDesktop]}>
+                      <Text style={styles.title}>Login to Fan App</Text>
+                      {!!errorText && <Text style={styles.errorText}>{errorText}</Text>}
+
+                      <Text style={styles.label}>Username</Text>
+                      <View style={styles.inputGlass}>
+                        <TextInput
+                          placeholder="Email"
+                          placeholderTextColor={Colors.textMuted}
+                          style={styles.input}
+                          value={email}
+                          onChangeText={(t) => {
+                            setEmail(t);
+                            if (errorText) setErrorText('');
+                          }}
+                          autoCapitalize="none"
+                          autoCorrect={false}
+                          keyboardType="email-address"
+                          returnKeyType="next"
+                        />
+                      </View>
+
+                      <Text style={styles.label}>Password</Text>
+                      <View style={styles.passwordContainer}>
+                        <TextInput
+                          placeholder="Password"
+                          placeholderTextColor={Colors.textMuted}
+                          style={styles.passwordInput}
+                          secureTextEntry={!isPasswordVisible}
+                          value={password}
+                          onChangeText={(t) => {
+                            setPassword(t);
+                            if (errorText) setErrorText('');
+                          }}
+                          autoCapitalize="none"
+                          autoCorrect={false}
+                          returnKeyType="done"
+                          onSubmitEditing={() => {
+                            if (canSubmit) void onSubmit();
+                          }}
+                        />
+                        <Pressable
+                          onPress={() => setIsPasswordVisible((v) => !v)}
+                          hitSlop={10}
+                          style={styles.eyeButton}
+                        >
+                          {isPasswordVisible ? (
+                            <EyeOff color={Colors.textPrimary} size={18} />
+                          ) : (
+                            <Eye color={Colors.textPrimary} size={18} />
+                          )}
+                        </Pressable>
+                      </View>
+
+                      <Pressable onPress={() => undefined} hitSlop={10} style={styles.forgotWrap}>
+                        <Text style={styles.forgotText}>Forgot Password?</Text>
+                      </Pressable>
+
+                      <Pressable onPress={onSubmit} disabled={!canSubmit}>
+                        <View style={styles.buttonGlass}>
+                          <LinearGradient colors={[Colors.accent, Colors.accent]} style={styles.button}>
+                            {isLoggingIn ? (
+                              <ActivityIndicator color="#000" />
+                            ) : (
+                              <Text style={styles.btnText}>Login</Text>
+                            )}
+                          </LinearGradient>
+                        </View>
+                      </Pressable>
+
+                      <Pressable onPress={() => navigation.navigate('Signup')} hitSlop={10}>
+                        <Text style={styles.link}>Create account</Text>
+                      </Pressable>
+                    </View>
+                  </BlurView>
+                </View>
+              </ScrollView>
+            </TouchableWithoutFeedback>
+          ) : (
+            <ScrollView
+              contentContainerStyle={styles.scrollContent}
+              keyboardShouldPersistTaps="handled"
+              showsVerticalScrollIndicator={false}
             >
               <View
                 style={[
-                  styles.logoWrapper,
-                  isDesktop && styles.logoWrapperDesktop,
+                  styles.content,
+                  isDesktop ? styles.contentDesktop : styles.contentMobile,
                 ]}
               >
-                <Image
-                  source={require('../logo.jpg')}
-                  style={styles.logoImage}
-                  resizeMode="cover"
-                />
-                <LinearGradient
-                  colors={['transparent', 'rgba(0,0,0,0.4)']}
-                  style={styles.logoInnerGradient}
-                />
-              </View>
-            </Shadow>
-
-            <BlurView intensity={25} tint="dark" style={[styles.cardBlur, isDesktop && styles.cardBlurDesktop]}>
-              <View style={[styles.cardInner, isDesktop && styles.cardInnerDesktop]}>
-                <Text style={styles.title}>Login to Fan App</Text>
-
-                <Text style={styles.label}>Username</Text>
-                <View style={styles.inputGlass}>
-                  <TextInput
-                    placeholder="Email"
-                    placeholderTextColor={Colors.textMuted}
-                    style={styles.input}
-                    value={email}
-                    onChangeText={setEmail}
-                    autoCapitalize="none"
-                    autoCorrect={false}
-                    keyboardType="email-address"
-                  />
-                </View>
-
-                <Text style={styles.label}>Password</Text>
-                <View style={styles.passwordContainer}>
-                  <TextInput
-                    placeholder="Password"
-                    placeholderTextColor={Colors.textMuted}
-                    style={styles.passwordInput}
-                    secureTextEntry={!isPasswordVisible}
-                    value={password}
-                    onChangeText={setPassword}
-                    autoCapitalize="none"
-                    autoCorrect={false}
-                  />
-                  <Pressable
-                    onPress={() => setIsPasswordVisible((v) => !v)}
-                    hitSlop={10}
-                    style={styles.eyeButton}
+                <Shadow
+                  distance={40}
+                  startColor="rgba(255, 69, 0, 0.25)"
+                  offset={[0, 0]}
+                >
+                  <View
+                    style={[
+                      styles.logoWrapper,
+                      isDesktop && styles.logoWrapperDesktop,
+                    ]}
                   >
-                    {isPasswordVisible ? (
-                      <EyeOff color={Colors.textPrimary} size={18} />
-                    ) : (
-                      <Eye color={Colors.textPrimary} size={18} />
-                    )}
-                  </Pressable>
-                </View>
-
-                <Pressable onPress={() => undefined} hitSlop={10} style={styles.forgotWrap}>
-                  <Text style={styles.forgotText}>Forgot Password?</Text>
-                </Pressable>
-
-                <Pressable onPress={onSubmit} disabled={!canSubmit}>
-                  <View style={styles.buttonGlass}>
-                    <LinearGradient colors={[Colors.accent, Colors.accent]} style={styles.button}>
-                      {isLoggingIn ? (
-                        <ActivityIndicator color="#000" />
-                      ) : (
-                        <Text style={styles.btnText}>Login</Text>
-                      )}
-                    </LinearGradient>
+                    <Image
+                      source={require('../logo.jpg')}
+                      style={styles.logoImage}
+                      resizeMode="cover"
+                    />
+                    <LinearGradient
+                      colors={['transparent', 'rgba(0,0,0,0.4)']}
+                      style={styles.logoInnerGradient}
+                    />
                   </View>
-                </Pressable>
+                </Shadow>
 
-                <Pressable onPress={() => navigation.navigate('Signup')} hitSlop={10}>
-                  <Text style={styles.link}>Create account</Text>
-                </Pressable>
+                <BlurView intensity={25} tint="dark" style={[styles.cardBlur, isDesktop && styles.cardBlurDesktop]}>
+                  <View style={[styles.cardInner, isDesktop && styles.cardInnerDesktop]}>
+                    <Text style={styles.title}>Login to Fan App</Text>
+                    {!!errorText && <Text style={styles.errorText}>{errorText}</Text>}
+
+                    <Text style={styles.label}>Username</Text>
+                    <View style={styles.inputGlass}>
+                      <TextInput
+                        placeholder="Email"
+                        placeholderTextColor={Colors.textMuted}
+                        style={styles.input}
+                        value={email}
+                        onChangeText={(t) => {
+                          setEmail(t);
+                          if (errorText) setErrorText('');
+                        }}
+                        autoCapitalize="none"
+                        autoCorrect={false}
+                        keyboardType="email-address"
+                        returnKeyType="next"
+                      />
+                    </View>
+
+                    <Text style={styles.label}>Password</Text>
+                    <View style={styles.passwordContainer}>
+                      <TextInput
+                        placeholder="Password"
+                        placeholderTextColor={Colors.textMuted}
+                        style={styles.passwordInput}
+                        secureTextEntry={!isPasswordVisible}
+                        value={password}
+                        onChangeText={(t) => {
+                          setPassword(t);
+                          if (errorText) setErrorText('');
+                        }}
+                        autoCapitalize="none"
+                        autoCorrect={false}
+                        returnKeyType="done"
+                        onSubmitEditing={() => {
+                          if (canSubmit) void onSubmit();
+                        }}
+                      />
+                      <Pressable
+                        onPress={() => setIsPasswordVisible((v) => !v)}
+                        hitSlop={10}
+                        style={styles.eyeButton}
+                      >
+                        {isPasswordVisible ? (
+                          <EyeOff color={Colors.textPrimary} size={18} />
+                        ) : (
+                          <Eye color={Colors.textPrimary} size={18} />
+                        )}
+                      </Pressable>
+                    </View>
+
+                    <Pressable onPress={() => undefined} hitSlop={10} style={styles.forgotWrap}>
+                      <Text style={styles.forgotText}>Forgot Password?</Text>
+                    </Pressable>
+
+                    <Pressable onPress={onSubmit} disabled={!canSubmit}>
+                      <View style={styles.buttonGlass}>
+                        <LinearGradient colors={[Colors.accent, Colors.accent]} style={styles.button}>
+                          {isLoggingIn ? (
+                            <ActivityIndicator color="#000" />
+                          ) : (
+                            <Text style={styles.btnText}>Login</Text>
+                          )}
+                        </LinearGradient>
+                      </View>
+                    </Pressable>
+
+                    <Pressable onPress={() => navigation.navigate('Signup')} hitSlop={10}>
+                      <Text style={styles.link}>Create account</Text>
+                    </Pressable>
+                  </View>
+                </BlurView>
               </View>
-            </BlurView>
-          </View>
+            </ScrollView>
+          )}
         </KeyboardAvoidingView>
       </SafeAreaView>
     </LinearGradient>
@@ -194,12 +343,17 @@ const styles = StyleSheet.create({
   },
   overlay: {
     flex: 1,
+    width: '100%',
+    minHeight: '100%',
+    backgroundColor: 'transparent',
+  },
+  scrollContent: {
+    flexGrow: 1,
     justifyContent: 'center',
     alignItems: 'center',
     width: '100%',
-    minHeight: '100%',
     padding: 24,
-    backgroundColor: 'transparent',
+    paddingBottom: 32,
   },
   content: {
     justifyContent: 'center',
@@ -354,5 +508,13 @@ const styles = StyleSheet.create({
     textShadowColor: 'rgba(0,0,0,0.5)',
     textShadowOffset: { width: 0, height: 1 },
     textShadowRadius: 2,
+  },
+  errorText: {
+    marginTop: -8,
+    marginBottom: 12,
+    color: '#FF4D4F',
+    fontSize: 12,
+    fontWeight: '700',
+    textAlign: 'center',
   },
 });
