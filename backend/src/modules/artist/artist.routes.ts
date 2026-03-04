@@ -41,7 +41,7 @@ router.get("/", (req, res) => {
         id: row.id,
         name: row.name ?? null,
         isVerified: Boolean(row.is_verified),
-        profileImageUrl: row.profile_image_url ?? null,
+        profileImageUrl: toAbsoluteUrl(req, row.profile_image_url),
         status: (row.status ?? 'ACTIVE').toString(),
         subscriptionPrice: Number(row.subscription_price ?? 0),
         genre: (row.genre ?? '').toString(),

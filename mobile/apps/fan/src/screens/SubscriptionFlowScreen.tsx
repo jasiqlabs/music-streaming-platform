@@ -3,6 +3,7 @@ import {
   ActivityIndicator,
   Alert,
   ImageBackground,
+  Platform,
   Pressable,
   StyleSheet,
   Text,
@@ -36,6 +37,20 @@ function formatRenewDate(value: unknown): string {
   } catch {
     return d.toISOString().slice(0, 10);
   }
+}
+
+function showPaymentError(message: string) {
+  const msg = (message || 'Failed to start payment').toString();
+  if (Platform.OS === 'web') {
+    try {
+      (globalThis as any)?.alert?.(msg);
+      return;
+    } catch {
+      // fall through
+    }
+  }
+
+  Alert.alert('Payment Error', msg);
 }
 
 export default function SubscriptionFlowScreen({ navigation, route }: any) {
@@ -104,6 +119,10 @@ export default function SubscriptionFlowScreen({ navigation, route }: any) {
       }
 
       setOrderId(nextOrderId);
+
+      if (Platform.OS === 'web') {
+        throw new Error('Payments are not supported in the web preview. Please use the Android/iOS app to complete Razorpay checkout.');
+      }
 
       const options: any = {
         key: keyId,
@@ -192,7 +211,7 @@ export default function SubscriptionFlowScreen({ navigation, route }: any) {
       setPaymentStep('SUCCESS');
     } catch (err: any) {
       setPaymentStep('OFFER');
-      Alert.alert('Payment Error', err?.message || 'Failed to start payment');
+      showPaymentError(err?.message || 'Failed to start payment');
     } finally {
       setIsCreatingOrder(false);
       setIsVerifyingPayment(false);
