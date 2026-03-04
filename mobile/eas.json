@@ -1,10 +1,17 @@
 {
   "build": {
     "preview": {
+      "env": {
+        "EXPO_PUBLIC_API_URL": "https://music-streaming-platform-cvad.onrender.com"
+      },
       "android": {
         "buildType": "apk"
       }
     },
-    "production": {}
+    "production": {
+      "env": {
+        "EXPO_PUBLIC_API_URL": "https://music-streaming-platform-cvad.onrender.com"
+      }
+    }
   }
 }

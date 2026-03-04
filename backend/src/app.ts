@@ -14,6 +14,7 @@ import adminRoutes from "./routes/admin";
 import authRoutes from "./routes/auth";
 import contentRoutes from "./routes/content";
 import searchRoutes from "./routes/search";
+import { razorpayWebhook } from "./controllers/paymentController";
 
 
 
@@ -33,6 +34,12 @@ app.use((req, res, next) => {
   if (req.method === "OPTIONS") return res.sendStatus(204);
   next();
 });
+
+app.post(
+  "/api/v1/payments/webhook",
+  express.raw({ type: "application/json" }),
+  (req, res) => razorpayWebhook(req as any, res)
+);
 
 app.use(express.json());
 

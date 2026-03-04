@@ -1,21 +1,33 @@
 import { Response } from "express";
 import crypto from "crypto";
 import { pool } from "../common/db";
+import Razorpay from "razorpay";
 
-const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+const getRazorpayClient = () => {
+  const key_id = (process.env.RAZORPAY_KEY_ID ?? "").toString().trim();
+  const key_secret = (process.env.RAZORPAY_KEY_SECRET ?? "").toString().trim();
 
-const randomOrderId = () => {
-  const suffix = crypto.randomBytes(10).toString("hex");
-  return `order_mock_${suffix}`;
+  if (!key_id || !key_secret) {
+    throw new Error("Razorpay keys are missing. Set RAZORPAY_KEY_ID and RAZORPAY_KEY_SECRET");
+  }
+
+  return new Razorpay({ key_id, key_secret });
 };
 
-export const createMockOrder = async (req: any, res: Response) => {
+const safeEqualHex = (aHex: string, bHex: string) => {
+  const a = Buffer.from(aHex, "hex");
+  const b = Buffer.from(bHex, "hex");
+  if (a.length !== b.length) return false;
+  return crypto.timingSafeEqual(a, b);
+};
+
+export const createOrder = async (req: any, res: Response) => {
   try {
     const userId = Number(req.user?.id);
-    const { amount, artistName, paymentMethod } = req.body as {
+    const { amount, artistId, artistName } = req.body as {
       amount?: number;
+      artistId?: number | string;
       artistName?: string;
-      paymentMethod?: 'card' | 'upi' | 'netbanking';
     };
 
     if (!Number.isFinite(userId) || userId <= 0) {
@@ -27,53 +39,73 @@ export const createMockOrder = async (req: any, res: Response) => {
       return res.status(400).json({ success: false, message: "amount is required" });
     }
 
-    // Validate payment method
-    const validPaymentMethods = ['card', 'upi', 'netbanking'];
-    const selectedPaymentMethod = paymentMethod || 'card';
-    
-    if (!validPaymentMethods.includes(selectedPaymentMethod)) {
-      return res.status(400).json({ 
-        success: false, 
-        message: "Invalid payment method. Must be one of: card, upi, netbanking" 
-      });
+    const artistIdRaw = (artistId ?? "").toString().trim();
+    let artistIdNumber = Number(artistIdRaw);
+    if (!Number.isFinite(artistIdNumber) || artistIdNumber <= 0) {
+      const artistRow = await pool.query(
+        `SELECT id
+         FROM users
+         WHERE username = $1
+         LIMIT 1`,
+        [artistIdRaw]
+      );
+      const resolved = Number(artistRow.rows?.[0]?.id);
+      if (!Number.isFinite(resolved) || resolved <= 0) {
+        return res.status(400).json({ success: false, message: "artistId is invalid" });
+      }
+      artistIdNumber = resolved;
     }
 
-    const razorpay_order_id = randomOrderId();
+    const amountPaise = Math.floor(amountInt);
+    const client = getRazorpayClient();
 
-    const insert = await pool.query(
+    const receipt = `sub_${userId}_${artistIdNumber}_${Date.now()}`;
+    const order = await client.orders.create({
+      amount: amountPaise,
+      currency: "INR",
+      receipt,
+      notes: {
+        user_id: String(userId),
+        artist_id: String(artistIdNumber),
+        artist_name: (artistName ?? "").toString() || "Unknown",
+      },
+    });
+
+    await pool.query(
       `INSERT INTO transactions (user_id, razorpay_order_id, amount, currency, status, artist_name)
        VALUES ($1, $2, $3, 'INR', 'CREATED', $4)
-       RETURNING id, razorpay_order_id, amount, currency, status`,
-      [userId, razorpay_order_id, Math.floor(amountInt), (artistName ?? "").toString() || "Unknown"]
+       ON CONFLICT (razorpay_order_id)
+       DO UPDATE SET amount = EXCLUDED.amount, artist_name = EXCLUDED.artist_name, status = 'CREATED'
+      `,
+      [userId, order.id, amountPaise, (artistName ?? "").toString() || "Unknown"]
     );
-
-    const tx = insert.rows?.[0];
 
     return res.json({
       success: true,
       order: {
-        id: tx?.razorpay_order_id ?? razorpay_order_id,
-        amount: tx?.amount ?? Math.floor(amountInt),
-        currency: tx?.currency ?? "INR",
-        status: tx?.status ?? "CREATED",
-        paymentMethod: selectedPaymentMethod,
-      }
+        id: order.id,
+        amount: order.amount,
+        currency: order.currency,
+        status: "CREATED",
+        key_id: (process.env.RAZORPAY_KEY_ID ?? "").toString(),
+      },
     });
   } catch (err: any) {
     return res.status(500).json({
       success: false,
-      message: err?.message || "Failed to create mock order"
+      message: err?.message || "Failed to create order"
     });
   }
 };
 
-export const verifyMockPayment = async (req: any, res: Response) => {
+export const confirmPayment = async (req: any, res: Response) => {
   try {
     const userId = Number(req.user?.id);
-    const { razorpay_order_id, artist_id, paymentMethod } = req.body as {
+    const { razorpay_order_id, razorpay_payment_id, razorpay_signature, artist_id } = req.body as {
       razorpay_order_id?: string;
-      artist_id?: number;
-      paymentMethod?: 'card' | 'upi' | 'netbanking';
+      razorpay_payment_id?: string;
+      razorpay_signature?: string;
+      artist_id?: number | string;
     };
 
     if (!Number.isFinite(userId) || userId <= 0) {
@@ -85,30 +117,44 @@ export const verifyMockPayment = async (req: any, res: Response) => {
       return res.status(400).json({ success: false, message: "razorpay_order_id is required" });
     }
 
-    const artistId = Number(artist_id);
+    const paymentId = (razorpay_payment_id ?? "").toString().trim();
+    const signature = (razorpay_signature ?? "").toString().trim();
+    if (!paymentId || !signature) {
+      return res
+        .status(400)
+        .json({ success: false, message: "razorpay_payment_id and razorpay_signature are required" });
+    }
+
+    const artistIdRaw = (artist_id ?? "").toString().trim();
+    let artistId = Number(artistIdRaw);
     if (!Number.isFinite(artistId) || artistId <= 0) {
-      return res.status(400).json({ success: false, message: "artist_id is required" });
+      const artistRow = await pool.query(
+        `SELECT id
+         FROM users
+         WHERE username = $1
+         LIMIT 1`,
+        [artistIdRaw]
+      );
+      const resolved = Number(artistRow.rows?.[0]?.id);
+      if (!Number.isFinite(resolved) || resolved <= 0) {
+        return res.status(400).json({ success: false, message: "artist_id is invalid" });
+      }
+      artistId = resolved;
     }
 
-    // Validate payment method
-    const validPaymentMethods = ['card', 'upi', 'netbanking'];
-    const selectedPaymentMethod = paymentMethod || 'card';
-    
-    if (!validPaymentMethods.includes(selectedPaymentMethod)) {
-      return res.status(400).json({ 
-        success: false, 
-        message: "Invalid payment method. Must be one of: card, upi, netbanking" 
-      });
+    const keySecret = (process.env.RAZORPAY_KEY_SECRET ?? "").toString().trim();
+    if (!keySecret) {
+      return res.status(500).json({ success: false, message: "RAZORPAY_KEY_SECRET is missing" });
     }
 
-    // Simulate payment processing delay based on payment method
-    const processingDelays = {
-      card: 2000,
-      upi: 1500,
-      netbanking: 3000
-    };
-    
-    await sleep(processingDelays[selectedPaymentMethod]);
+    const expectedSig = crypto
+      .createHmac("sha256", keySecret)
+      .update(`${orderId}|${paymentId}`)
+      .digest("hex");
+
+    if (!safeEqualHex(expectedSig, signature)) {
+      return res.status(400).json({ success: false, message: "Invalid Razorpay signature" });
+    }
 
     const found = await pool.query(
       `SELECT id, user_id, razorpay_order_id, amount, currency, status
@@ -125,58 +171,111 @@ export const verifyMockPayment = async (req: any, res: Response) => {
     }
 
     const paymentConfirmedAt = new Date();
-    const mockPaymentId = `pay_mock_${crypto.randomBytes(8).toString("hex")}`;
-    const mockSignature = `sig_mock_${crypto.randomBytes(16).toString("hex")}`;
-
     const updated = await pool.query(
       `UPDATE transactions
        SET status = 'CAPTURED', payment_confirmed_at = $2, razorpay_payment_id = $3, razorpay_signature = $4
        WHERE razorpay_order_id = $1
        RETURNING id, user_id, razorpay_order_id, amount, currency, status, payment_confirmed_at, razorpay_payment_id, razorpay_signature`,
-      [orderId, paymentConfirmedAt, mockPaymentId, mockSignature]
+      [orderId, paymentConfirmedAt, paymentId, signature]
     );
 
     const updatedTx = updated.rows?.[0] ?? null;
 
-    const now = new Date();
-    const endDate = new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000);
-
-    const subUpsert = await pool.query(
-      `INSERT INTO subscriptions (user_id, artist_id, status, plan_type, start_date, end_date, auto_renew)
-       VALUES ($1, $2, 'ACTIVE', 'MONTHLY', $3, $4, true)
-       ON CONFLICT (user_id, artist_id)
-       DO UPDATE SET status = 'ACTIVE', end_date = EXCLUDED.end_date, updated_at = now()
-       RETURNING user_id, artist_id, status, start_date, end_date`,
-      [userId, artistId, now, endDate]
-    );
-
-    const subscription = subUpsert.rows?.[0] ?? null;
-
     return res.json({
       success: true,
-      message: "Mock payment captured successfully",
-      paymentMethod: selectedPaymentMethod,
+      message: "Payment submitted. Waiting for confirmation",
       transaction: {
         razorpay_order_id: updatedTx?.razorpay_order_id ?? orderId,
-        razorpay_payment_id: updatedTx?.razorpay_payment_id ?? mockPaymentId,
-        razorpay_signature: updatedTx?.razorpay_signature ?? mockSignature,
+        razorpay_payment_id: updatedTx?.razorpay_payment_id ?? paymentId,
         status: updatedTx?.status ?? "CAPTURED",
         amount: updatedTx?.amount ?? tx.amount,
         currency: updatedTx?.currency ?? tx.currency ?? "INR",
         payment_confirmed_at: updatedTx?.payment_confirmed_at ?? paymentConfirmedAt,
       },
-      subscription: {
-        user_id: subscription?.user_id ?? userId,
-        artist_id: subscription?.artist_id ?? artistId,
-        status: subscription?.status ?? "ACTIVE",
-        start_date: subscription?.start_date ?? now,
-        end_date: subscription?.end_date ?? endDate,
-      }
     });
   } catch (err: any) {
     return res.status(500).json({
       success: false,
-      message: err?.message || "Failed to verify mock payment"
+      message: err?.message || "Failed to confirm payment"
+    });
+  }
+};
+
+export const razorpayWebhook = async (req: any, res: Response) => {
+  try {
+    const signatureHeader = (req.headers["x-razorpay-signature"] ?? "").toString();
+    if (!signatureHeader) {
+      return res.status(400).json({ success: false, message: "Missing x-razorpay-signature" });
+    }
+
+    const webhookSecret = (process.env.RAZORPAY_WEBHOOK_SECRET ?? process.env.RAZORPAY_KEY_SECRET ?? "")
+      .toString()
+      .trim();
+    if (!webhookSecret) {
+      return res.status(500).json({ success: false, message: "Webhook secret missing" });
+    }
+
+    const rawBody: Buffer = Buffer.isBuffer(req.body) ? req.body : Buffer.from(req.body || "");
+    const expected = crypto.createHmac("sha256", webhookSecret).update(rawBody).digest("hex");
+
+    const sigA = expected;
+    const sigB = signatureHeader;
+    if (!safeEqualHex(sigA, sigB)) {
+      return res.status(400).json({ success: false, message: "Invalid webhook signature" });
+    }
+
+    const payload = JSON.parse(rawBody.toString("utf8") || "{}");
+    const event = (payload?.event ?? "").toString();
+
+    if (event !== "payment.captured") {
+      return res.json({ success: true, received: true });
+    }
+
+    const paymentEntity = payload?.payload?.payment?.entity ?? null;
+    const orderId = (paymentEntity?.order_id ?? "").toString();
+    const paymentId = (paymentEntity?.id ?? "").toString();
+
+    if (!orderId || !paymentId) {
+      return res.status(400).json({ success: false, message: "Missing order_id/payment_id in webhook" });
+    }
+
+    const client = getRazorpayClient();
+    const order = await client.orders.fetch(orderId);
+    const notes: any = (order as any)?.notes ?? {};
+    const userIdFromNotes = Number(notes?.user_id);
+    const artistIdFromNotes = Number(notes?.artist_id);
+
+    if (!Number.isFinite(userIdFromNotes) || userIdFromNotes <= 0) {
+      return res.status(400).json({ success: false, message: "Missing user_id in Razorpay order notes" });
+    }
+
+    if (!Number.isFinite(artistIdFromNotes) || artistIdFromNotes <= 0) {
+      return res.status(400).json({ success: false, message: "Missing artist_id in Razorpay order notes" });
+    }
+
+    const now = new Date();
+    const endDate = new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000);
+
+    await pool.query(
+      `UPDATE transactions
+       SET status = 'SUCCESS', payment_confirmed_at = $2, razorpay_payment_id = $3
+       WHERE razorpay_order_id = $1`,
+      [orderId, now, paymentId]
+    );
+
+    await pool.query(
+      `INSERT INTO subscriptions (user_id, artist_id, status, plan_type, start_date, end_date, auto_renew)
+       VALUES ($1, $2, 'ACTIVE', 'MONTHLY', $3, $4, true)
+       ON CONFLICT (user_id, artist_id)
+       DO UPDATE SET status = 'ACTIVE', end_date = EXCLUDED.end_date, updated_at = now()`,
+      [userIdFromNotes, artistIdFromNotes, now, endDate]
+    );
+
+    return res.json({ success: true });
+  } catch (err: any) {
+    return res.status(500).json({
+      success: false,
+      message: err?.message || "Webhook handling failed",
     });
   }
 };

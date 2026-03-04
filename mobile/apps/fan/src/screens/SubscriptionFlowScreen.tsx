@@ -3,7 +3,6 @@ import {
   ActivityIndicator,
   Alert,
   ImageBackground,
-  Modal,
   Pressable,
   StyleSheet,
   Text,
@@ -14,9 +13,10 @@ import { BlurView } from 'expo-blur';
 import { LinearGradient } from 'expo-linear-gradient';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useBottomTabBarHeight } from '@react-navigation/bottom-tabs';
-import { BadgeCheck, Check, CreditCard, Pause, Play } from 'lucide-react-native';
+import { BadgeCheck, Check, Pause, Play } from 'lucide-react-native';
 import ErrorBoundary from '../ui/ErrorBoundary';
 import { apiV1 } from '../services/api';
+import RazorpayCheckout from 'react-native-razorpay';
 
 type PaymentStep = 'OFFER' | 'PROCESSING' | 'SUCCESS';
 
@@ -51,9 +51,6 @@ export default function SubscriptionFlowScreen({ navigation, route }: any) {
     'https://images.unsplash.com/photo-1501426026826-31c667bdf23d?auto=format&fit=crop&w=1400&q=80';
 
   const [paymentStep, setPaymentStep] = useState<PaymentStep>('OFFER');
-
-  const [mockModalVisible, setMockModalVisible] = useState(false);
-  const [selectedPaymentMethod, setSelectedPaymentMethod] = useState<'card' | 'upi' | 'netbanking'>('card');
   const [orderId, setOrderId] = useState<string | null>(null);
   const [isCreatingOrder, setIsCreatingOrder] = useState(false);
   const [isVerifyingPayment, setIsVerifyingPayment] = useState(false);
@@ -78,60 +75,102 @@ export default function SubscriptionFlowScreen({ navigation, route }: any) {
     return () => clearTimeout(t);
   }, [isVerifyingPayment]);
 
-  const createMockOrder = async () => {
+  const startPayment = async () => {
     if (isCreatingOrder || isVerifyingPayment) return;
 
     try {
       setIsCreatingOrder(true);
 
       const amountPaise = 49900;
-      const res = await apiV1.post('/subscriptions/mock-order', {
+      const artistIdValue = (artistId ?? '').toString().trim();
+      if (!artistIdValue) {
+        throw new Error('Invalid artist id');
+      }
+
+      const res = await apiV1.post('/subscriptions/order', {
         amount: amountPaise,
+        artistId: artistIdValue,
         artistName,
-        paymentMethod: selectedPaymentMethod,
       });
 
       const nextOrderId = (res.data?.order?.id ?? '').toString();
       if (!nextOrderId) {
-        throw new Error('Mock order creation succeeded but order id was missing');
+        throw new Error('Order creation succeeded but order id was missing');
+      }
+
+      const keyId = (res.data?.order?.key_id ?? '').toString();
+      if (!keyId) {
+        throw new Error('Missing Razorpay key_id in order response');
       }
 
       setOrderId(nextOrderId);
-      setMockModalVisible(true);
-    } catch (err: any) {
-      Alert.alert('Payment Error', err?.message || 'Failed to create mock order');
-    } finally {
-      setIsCreatingOrder(false);
-    }
-  };
 
-  const verifyMockPayment = async () => {
-    if (!orderId) {
-      Alert.alert('Payment Error', 'Missing mock order id');
-      return;
-    }
+      const options: any = {
+        key: keyId,
+        amount: Number(res.data?.order?.amount ?? amountPaise),
+        currency: (res.data?.order?.currency ?? 'INR').toString(),
+        name: 'Music Platform',
+        description: `Subscription for ${artistName}`,
+        order_id: nextOrderId,
+        notes: {
+          artist_id: artistIdValue,
+        },
+        theme: {
+          color: '#FF7A18',
+        },
+      };
 
-    const artistIdNumber = Number(artistId);
-    if (!Number.isFinite(artistIdNumber) || artistIdNumber <= 0) {
-      Alert.alert('Payment Error', 'Invalid artist id for verification');
-      return;
-    }
+      let paymentData: any;
+      try {
+        paymentData = await RazorpayCheckout.open(options);
+      } catch (e: any) {
+        const msg = (e?.description ?? e?.error?.description ?? e?.message ?? '').toString();
+        if (/cancel/i.test(msg)) {
+          return;
+        }
+        throw new Error(msg || 'Payment cancelled');
+      }
 
-    try {
-      setMockModalVisible(false);
+      const razorpay_order_id = (paymentData?.razorpay_order_id ?? nextOrderId).toString();
+      const razorpay_payment_id = (paymentData?.razorpay_payment_id ?? '').toString();
+      const razorpay_signature = (paymentData?.razorpay_signature ?? '').toString();
+
+      if (!razorpay_payment_id || !razorpay_signature) {
+        throw new Error('Payment completed but required fields were missing');
+      }
+
       setPaymentStep('PROCESSING');
       setIsVerifyingPayment(true);
 
-      const res = await apiV1.post('/subscriptions/mock-verify', {
-        razorpay_order_id: orderId,
-        artist_id: artistIdNumber,
-        paymentMethod: selectedPaymentMethod,
+      await apiV1.post('/subscriptions/confirm', {
+        razorpay_order_id,
+        razorpay_payment_id,
+        razorpay_signature,
+        artist_id: artistIdValue,
       });
 
-      const renewDate = formatRenewDate(res.data?.subscription?.end_date);
+      const deadlineMs = Date.now() + 60_000;
+      let subscription: any = null;
+      while (Date.now() < deadlineMs) {
+        const sRes = await apiV1.get('/subscriptions/me', {
+          params: { artistId: artistIdValue },
+        });
+
+        subscription = sRes.data?.subscription ?? null;
+        const status = (subscription?.status ?? '').toString().toUpperCase();
+        if (status === 'ACTIVE') break;
+
+        await new Promise((r) => setTimeout(r, 2000));
+      }
+
+      if ((subscription?.status ?? '').toString().toUpperCase() !== 'ACTIVE') {
+        throw new Error('Payment captured, but subscription is still confirming. Please check again shortly.');
+      }
+
+      const renewDate = formatRenewDate(subscription?.end_date);
 
       const parentNav = typeof navigation?.getParent === 'function' ? navigation.getParent() : null;
-      const targetArtistId = String(artistIdNumber);
+      const targetArtistId = artistIdValue;
 
       if (parentNav?.navigate) {
         parentNav.navigate('LibraryTab', {
@@ -153,8 +192,9 @@ export default function SubscriptionFlowScreen({ navigation, route }: any) {
       setPaymentStep('SUCCESS');
     } catch (err: any) {
       setPaymentStep('OFFER');
-      Alert.alert('Payment Failed', err?.message || 'Mock payment verification failed');
+      Alert.alert('Payment Error', err?.message || 'Failed to start payment');
     } finally {
+      setIsCreatingOrder(false);
       setIsVerifyingPayment(false);
     }
   };
@@ -198,116 +238,19 @@ export default function SubscriptionFlowScreen({ navigation, route }: any) {
                   </View>
                 </View>
 
-                <Pressable style={styles.primaryBtn} onPress={createMockOrder} disabled={isCreatingOrder}>
+                <Pressable style={styles.primaryBtn} onPress={startPayment} disabled={isCreatingOrder || isVerifyingPayment}>
                   <LinearGradient
                     colors={['rgba(255,122,24,0.45)', 'rgba(255,122,24,0.20)']}
                     style={styles.primaryBtnInner}
                   >
                     <Text style={styles.primaryBtnText}>
-                      {isCreatingOrder ? 'Creating Order...' : 'Pay Now'}
+                      {isCreatingOrder ? 'Creating Order...' : isVerifyingPayment ? 'Confirming...' : 'Pay Now'}
                     </Text>
                   </LinearGradient>
                 </Pressable>
               </BlurView>
             </View>
           ) : null}
-
-          <Modal
-            visible={mockModalVisible}
-            transparent
-            animationType="fade"
-            onRequestClose={() => {
-              if (isVerifyingPayment) return;
-              setMockModalVisible(false);
-            }}
-          >
-            <View style={styles.modalOverlay}>
-              <View style={styles.modalCard}>
-                <Text style={styles.modalTitle}>Select Payment Method</Text>
-                <Text style={styles.modalSubtitle} numberOfLines={2}>
-                  Order: {orderId ?? '-'}
-                </Text>
-
-                <View style={styles.paymentMethodsWrap}>
-                  <Pressable
-                    style={[
-                      styles.paymentMethod,
-                      selectedPaymentMethod === 'card' && styles.paymentMethodSelected
-                    ]}
-                    onPress={() => setSelectedPaymentMethod('card')}
-                  >
-                    <CreditCard 
-                      color={selectedPaymentMethod === 'card' ? '#FF7A18' : '#fff'} 
-                      size={20} 
-                    />
-                    <Text style={[
-                      styles.paymentMethodText,
-                      selectedPaymentMethod === 'card' && styles.paymentMethodTextSelected
-                    ]}>
-                      Card
-                    </Text>
-                  </Pressable>
-
-                  <Pressable
-                    style={[
-                      styles.paymentMethod,
-                      selectedPaymentMethod === 'upi' && styles.paymentMethodSelected
-                    ]}
-                    onPress={() => setSelectedPaymentMethod('upi')}
-                  >
-                    <View style={styles.upiIcon}>
-                      <Text style={styles.upiIconText}>UPI</Text>
-                    </View>
-                    <Text style={[
-                      styles.paymentMethodText,
-                      selectedPaymentMethod === 'upi' && styles.paymentMethodTextSelected
-                    ]}>
-                      UPI
-                    </Text>
-                  </Pressable>
-
-                  <Pressable
-                    style={[
-                      styles.paymentMethod,
-                      selectedPaymentMethod === 'netbanking' && styles.paymentMethodSelected
-                    ]}
-                    onPress={() => setSelectedPaymentMethod('netbanking')}
-                  >
-                    <View style={styles.netbankingIcon}>
-                      <Text style={styles.netbankingIconText}>NB</Text>
-                    </View>
-                    <Text style={[
-                      styles.paymentMethodText,
-                      selectedPaymentMethod === 'netbanking' && styles.paymentMethodTextSelected
-                    ]}>
-                      Netbanking
-                    </Text>
-                  </Pressable>
-                </View>
-
-                <Pressable
-                  style={[styles.modalBtn, styles.modalBtnSuccess]}
-                  onPress={verifyMockPayment}
-                  disabled={isVerifyingPayment}
-                >
-                  <Text style={styles.modalBtnText}>
-                    Pay $4.99 with {selectedPaymentMethod === 'card' ? 'Card' : selectedPaymentMethod === 'upi' ? 'UPI' : 'Netbanking'}
-                  </Text>
-                </Pressable>
-
-                <Pressable
-                  style={[styles.modalBtn, styles.modalBtnNeutral]}
-                  onPress={() => {
-                    if (isVerifyingPayment) return;
-                    setMockModalVisible(false);
-                  }}
-                  disabled={isVerifyingPayment}
-                >
-                  <Text style={styles.modalBtnText}>Cancel</Text>
-                </Pressable>
-              </View>
-            </View>
-          </Modal>
 
           {paymentStep === 'PROCESSING' ? (
             <View style={styles.processingWrap}>

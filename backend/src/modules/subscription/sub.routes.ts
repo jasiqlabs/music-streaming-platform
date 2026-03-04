@@ -1,6 +1,6 @@
 import { Router } from "express";
 import { requireAuth } from "../../common/auth/requireAuth";
-import { createMockOrder, verifyMockPayment } from "../../controllers/paymentController";
+import { confirmPayment, createOrder } from "../../controllers/paymentController";
 import { pool } from "../../common/db";
 
 const router = Router();
@@ -24,14 +24,33 @@ router.get("/me", requireAuth, (req, res) => {
   (async () => {
     const userId = req.user?.id;
     const artistIdRaw = (req.query?.artistId as string | undefined) ?? "";
-    const artistId = Number(artistIdRaw);
+    let artistId = Number(artistIdRaw);
 
     if (!userId) {
       return res.status(401).json({ success: false, message: "Unauthorized" });
     }
 
-    if (!artistIdRaw || Number.isNaN(artistId) || artistId <= 0) {
+    if (!artistIdRaw) {
       return res.status(400).json({ success: false, message: "artistId required" });
+    }
+
+    if (Number.isNaN(artistId) || artistId <= 0) {
+      try {
+        const artistRow = await pool.query(
+          `SELECT id
+           FROM users
+           WHERE username = $1
+           LIMIT 1`,
+          [artistIdRaw]
+        );
+        const resolved = Number(artistRow.rows?.[0]?.id);
+        if (!Number.isFinite(resolved) || resolved <= 0) {
+          return res.status(400).json({ success: false, message: "artistId required" });
+        }
+        artistId = resolved;
+      } catch {
+        return res.status(400).json({ success: false, message: "artistId required" });
+      }
     }
 
     try {
@@ -107,7 +126,10 @@ router.get("/summary", requireAuth, (req: any, res: any) => {
   })();
 });
 
-router.post("/mock-order", requireAuth, (req, res) => createMockOrder(req as any, res));
-router.post("/mock-verify", requireAuth, (req, res) => verifyMockPayment(req as any, res));
+router.post("/order", requireAuth, (req, res) => createOrder(req as any, res));
+router.post("/confirm", requireAuth, (req, res) => confirmPayment(req as any, res));
+
+router.post("/mock-order", requireAuth, (req, res) => createOrder(req as any, res));
+router.post("/mock-verify", requireAuth, (req, res) => confirmPayment(req as any, res));
 
 export default router;

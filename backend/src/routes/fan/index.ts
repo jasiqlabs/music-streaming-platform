@@ -18,6 +18,7 @@ router.use("/artists", artistRoutes);
 router.use("/content", contentRoutes);
 router.use("/stream", streamRoutes);
 router.use("/subscriptions", subRoutes);
+router.use("/subs", subRoutes);
 router.use("/analytics", analyticsRoutes);
 router.use("/library", libraryRoutes);
 
