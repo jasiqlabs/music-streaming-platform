@@ -75,6 +75,8 @@ router.get("/", (req, res) => {
            c.type,
            c.thumbnail_url,
            c.media_url,
+           c.storage_key,
+           c.thumbnail_storage_key,
            c.created_at,
            c.artist_id,
            c.subscription_required,
@@ -93,18 +95,21 @@ router.get("/", (req, res) => {
         const mediaType = ((r.type ?? '').toString().toLowerCase() === 'video' ? 'video' : 'audio') as
           | 'audio'
           | 'video';
-        const unlockedMediaUrl = toAbsoluteUrl(req, r.media_url);
+        const hasNewStorage = !!r.storage_key;
+        const unlockedMediaUrl = hasNewStorage ? null : toAbsoluteUrl(req, r.media_url);
         const finalMediaUrl = isLocked ? restrictedMediaUrl(req, mediaType) : unlockedMediaUrl;
+        const thumbnailUrl = r.thumbnail_url ? toAbsoluteUrl(req, r.thumbnail_url) : null;
         
         return {
           id: r.id,
           title: r.title,
           type: r.type,
           mediaType,
-          thumbnailUrl: toAbsoluteUrl(req, r.thumbnail_url),
-          artwork: toAbsoluteUrl(req, r.thumbnail_url),
+          thumbnailUrl,
+          artwork: thumbnailUrl,
           mediaUrl: finalMediaUrl,
           fileUrl: finalMediaUrl,
+          useStreamAccess: hasNewStorage,
           createdAt: r.created_at,
           artistName: r.artist_name ?? null,
           artistId: r.artist_id,
@@ -133,7 +138,7 @@ router.get("/artist/:artistId", (req, res) => {
       const userId = req.user?.id ? Number(req.user.id) : null;
       
       const rows = await pool.query(
-        `SELECT id, title, type, thumbnail_url, media_url, created_at, subscription_required
+        `SELECT id, title, type, thumbnail_url, media_url, storage_key, created_at, subscription_required
          FROM content_items
          WHERE artist_id = $1
            AND COALESCE(is_approved, false) = true
@@ -147,18 +152,21 @@ router.get("/artist/:artistId", (req, res) => {
         const { isLocked } = await checkContentAccess(userId, r.id);
         const type = (r.type ?? "").toString().toLowerCase();
         const mediaType = type === "video" ? "video" : "audio";
-        const unlockedMediaUrl = toAbsoluteUrl(req, r.media_url);
+        const hasNewStorage = !!r.storage_key;
+        const unlockedMediaUrl = hasNewStorage ? null : toAbsoluteUrl(req, r.media_url);
         const finalMediaUrl = isLocked ? restrictedMediaUrl(req, mediaType) : unlockedMediaUrl;
+        const thumbnailUrl = r.thumbnail_url ? toAbsoluteUrl(req, r.thumbnail_url) : null;
         
         return {
           id: r.id,
           title: r.title,
           type,
           mediaType,
-          thumbnailUrl: toAbsoluteUrl(req, r.thumbnail_url),
-          artwork: toAbsoluteUrl(req, r.thumbnail_url),
+          thumbnailUrl,
+          artwork: thumbnailUrl,
           mediaUrl: finalMediaUrl,
           fileUrl: finalMediaUrl,
+          useStreamAccess: hasNewStorage,
           subscriptionRequired: Boolean(r.subscription_required),
           isLocked,
           createdAt: r.created_at,
@@ -191,6 +199,7 @@ router.get("/:id", (req, res) => {
            c.type,
            c.thumbnail_url,
            c.media_url,
+           c.storage_key,
            c.subscription_required,
            c.artist_id,
            COALESCE(u.name, u.email) as artist_name
@@ -211,8 +220,10 @@ router.get("/:id", (req, res) => {
       const { isLocked } = await checkContentAccess(userId, r.id);
       const type = (r.type ?? '').toString().toLowerCase();
       const mediaType = type === 'video' ? 'video' : 'audio';
-      const unlockedMediaUrl = toAbsoluteUrl(req, r.media_url);
+      const hasNewStorage = !!r.storage_key;
+      const unlockedMediaUrl = hasNewStorage ? null : toAbsoluteUrl(req, r.media_url);
       const finalMediaUrl = isLocked ? restrictedMediaUrl(req, mediaType) : unlockedMediaUrl;
+      const thumbnailUrl = r.thumbnail_url ? toAbsoluteUrl(req, r.thumbnail_url) : null;
       
       return res.json({
         success: true,
@@ -224,10 +235,11 @@ router.get("/:id", (req, res) => {
           subscriptionRequired: Boolean(r.subscription_required),
           artistId: r.artist_id,
           artistName: r.artist_name ?? null,
-          artwork: toAbsoluteUrl(req, r.thumbnail_url),
-          thumbnailUrl: toAbsoluteUrl(req, r.thumbnail_url),
+          artwork: thumbnailUrl,
+          thumbnailUrl,
           mediaUrl: finalMediaUrl,
           fileUrl: finalMediaUrl,
+          useStreamAccess: hasNewStorage,
         }
       });
     } catch (err: any) {

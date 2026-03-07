@@ -16,6 +16,7 @@ import { navigationRef } from '../navigation/rootNavigation';
 
 import MediaPlayerOverlay from '../ui/MediaPlayerOverlay';
 import { recordPlayback } from '../services/libraryService';
+import { getPlaybackUrl } from '../services/streamService';
 
 export type MediaType = 'audio' | 'video';
 
@@ -28,6 +29,8 @@ export type MediaItem = {
   artworkUrl?: string | null;
   mediaUrl: string;
   isLocked?: boolean;
+  /** When true, resolve playback URL via POST /stream/access before playing */
+  useStreamAccess?: boolean;
 };
 
 type PlayerState = {
@@ -292,6 +295,21 @@ export function MediaPlayerProvider({ children }: { children: ReactNode }) {
       await stopVideo();
       await unloadAudio();
 
+      let playbackUrl = item.mediaUrl;
+      if (item.useStreamAccess) {
+        try {
+          playbackUrl = await getPlaybackUrl(item.id);
+        } catch (e) {
+          console.warn('[MediaPlayer] getPlaybackUrl failed', e);
+          Alert.alert('Playback Error', 'Could not get playback URL. Try again.');
+          return;
+        }
+      }
+      if (!playbackUrl) {
+        Alert.alert('Playback Error', 'No playback URL available.');
+        return;
+      }
+
       await Audio.setAudioModeAsync({
         playsInSilentModeIOS: true,
         staysActiveInBackground: true,
@@ -299,7 +317,7 @@ export function MediaPlayerProvider({ children }: { children: ReactNode }) {
       });
 
       const { sound } = await Audio.Sound.createAsync(
-        { uri: item.mediaUrl },
+        { uri: playbackUrl },
         { shouldPlay: true },
         updateProgressFromStatus
       );
@@ -373,12 +391,24 @@ export function MediaPlayerProvider({ children }: { children: ReactNode }) {
         ? shuffleQueueKeepCurrent(queue, safeIndex)
         : { queue, currentIndex: safeIndex };
 
-      const item = nextState.queue[nextState.currentIndex];
+      let item = nextState.queue[nextState.currentIndex];
       if (!item) return;
 
       if (item.isLocked) {
         await blockLockedPlayback(item);
         return;
+      }
+
+      if (item.mediaType === 'video' && item.useStreamAccess) {
+        try {
+          const url = await getPlaybackUrl(item.id);
+          item = { ...item, mediaUrl: url };
+          nextState.queue[nextState.currentIndex] = item;
+        } catch (e) {
+          console.warn('[MediaPlayer] getPlaybackUrl for video failed', e);
+          Alert.alert('Playback Error', 'Could not get playback URL. Try again.');
+          return;
+        }
       }
 
       setState((s) => ({

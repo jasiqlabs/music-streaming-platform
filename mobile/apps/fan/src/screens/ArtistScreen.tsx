@@ -37,6 +37,7 @@ type Song = {
   locked: boolean;
   mediaType: 'audio' | 'video';
   mediaUrl: string;
+  useStreamAccess?: boolean;
 };
 
 type Artist = {
@@ -148,6 +149,7 @@ export default function ArtistScreen({ navigation, route }: any) {
           locked: it.locked,
           mediaType: it.mediaType,
           mediaUrl: it.mediaUrl,
+          useStreamAccess: it.useStreamAccess,
         });
 
         setArtist(normalizedArtist);
@@ -190,7 +192,7 @@ export default function ArtistScreen({ navigation, route }: any) {
     if (match.mediaType === 'video') setActiveTab('Video');
 
     const queue = songs
-      .filter((s) => Boolean(s.mediaUrl))
+      .filter((s) => Boolean(s.mediaUrl) || s.useStreamAccess)
       .map((s) => ({
         id: s.id,
         title: s.title,
@@ -198,8 +200,9 @@ export default function ArtistScreen({ navigation, route }: any) {
         artistId: artist.id,
         mediaType: s.mediaType,
         artworkUrl: s.thumbnail,
-        mediaUrl: s.mediaUrl,
+        mediaUrl: s.mediaUrl || '',
         isLocked: s.locked,
+        useStreamAccess: s.useStreamAccess,
       }));
     const idx = queue.findIndex((q) => q.id === initialMediaId);
     if (idx < 0) return;
@@ -250,7 +253,7 @@ export default function ArtistScreen({ navigation, route }: any) {
       return;
     }
     const queue = filteredSongs
-      .filter((s) => Boolean(s.mediaUrl))
+      .filter((s) => Boolean(s.mediaUrl) || s.useStreamAccess)
       .map((s) => ({
         id: s.id,
         title: s.title,
@@ -258,8 +261,9 @@ export default function ArtistScreen({ navigation, route }: any) {
         artistId: artist.id,
         mediaType: s.mediaType,
         artworkUrl: s.thumbnail,
-        mediaUrl: s.mediaUrl,
+        mediaUrl: s.mediaUrl || '',
         isLocked: s.locked,
+        useStreamAccess: s.useStreamAccess,
       }));
     const idx = queue.findIndex((q) => q.id === song.id);
     playQueue(queue, idx >= 0 ? idx : 0).catch(() => undefined);

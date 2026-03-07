@@ -8,6 +8,8 @@ import jwt from "jsonwebtoken";
 import { v4 as uuidv4 } from "uuid";
 import path from "path";
 import { globalLimiter } from "./common/security/rateLimit";
+import { validateEnv } from "./config/env.validation";
+import { ensureContentMediaColumns } from "./config/ensure-schema";
 import fanRoutes from "./routes/fan";
 import artistRoutes from "./routes/artist";
 import adminRoutes from "./routes/admin";
@@ -15,6 +17,9 @@ import authRoutes from "./routes/auth";
 import contentRoutes from "./routes/content";
 import searchRoutes from "./routes/search";
 import { razorpayWebhook } from "./controllers/paymentController";
+import mediaStreamRoutes from "./modules/media/media-stream.routes";
+import { createStorageProvider } from "./shared/storage/factory/storage-provider.factory";
+import { getDeliveryStrategyForProvider } from "./shared/delivery/services/media-delivery.service";
 
 
 
@@ -46,6 +51,8 @@ app.use(express.json());
 app.use(globalLimiter);
 
 app.use("/uploads", express.static(path.join(process.cwd(), "public", "uploads")));
+
+app.use("/media/stream", mediaStreamRoutes);
 
 app.use(
   morgan("dev", {
@@ -195,33 +202,45 @@ app.use((err: any, req: any, res: any, next: any) => {
 
 const PORT = process.env.PORT || 8000;
 
-app.listen(PORT, () => {
-  console.log("--- Logger Initialized Successfully ---");
-  console.log(`Server running on port ${PORT}`);
+(async () => {
+  validateEnv();
+  createStorageProvider();
+  const storageConfig = validateEnv();
+  getDeliveryStrategyForProvider(storageConfig.storageProvider);
+  await ensureContentMediaColumns();
 
-  try {
-    const routes: string[] = [];
-    const stack = (app as any)?._router?.stack || [];
-    for (const layer of stack) {
-      if (layer?.route?.path && layer?.route?.methods) {
-        const methods = Object.keys(layer.route.methods)
-          .filter((m) => layer.route.methods[m])
-          .map((m) => m.toUpperCase());
-        routes.push(`${methods.join(",")} ${layer.route.path}`);
-      } else if (layer?.name === "router" && layer?.handle?.stack) {
-        const mountPath = layer?.regexp?.toString?.() || "";
-        for (const handler of layer.handle.stack) {
-          if (!handler?.route) continue;
-          const methods = Object.keys(handler.route.methods)
-            .filter((m) => handler.route.methods[m])
+  app.listen(PORT, () => {
+    console.log("--- Logger Initialized Successfully ---");
+    console.log(`Server running on port ${PORT}`);
+    console.log(`[Startup] STORAGE_PROVIDER=${storageConfig.storageProvider}`);
+
+    try {
+      const routes: string[] = [];
+      const stack = (app as any)?._router?.stack || [];
+      for (const layer of stack) {
+        if (layer?.route?.path && layer?.route?.methods) {
+          const methods = Object.keys(layer.route.methods)
+            .filter((m) => layer.route.methods[m])
             .map((m) => m.toUpperCase());
-          routes.push(`${methods.join(",")} ${mountPath} ${handler.route.path}`);
+          routes.push(`${methods.join(",")} ${layer.route.path}`);
+        } else if (layer?.name === "router" && layer?.handle?.stack) {
+          const mountPath = layer?.regexp?.toString?.() || "";
+          for (const handler of layer.handle.stack) {
+            if (!handler?.route) continue;
+            const methods = Object.keys(handler.route.methods)
+              .filter((m) => handler.route.methods[m])
+              .map((m) => m.toUpperCase());
+            routes.push(`${methods.join(",")} ${mountPath} ${handler.route.path}`);
+          }
         }
       }
+      console.log("Registered routes:");
+      for (const r of routes) console.log(r);
+    } catch (e) {
+      console.warn("Failed to list routes", e);
     }
-    console.log("Registered routes:");
-    for (const r of routes) console.log(r);
-  } catch (e) {
-    console.warn("Failed to list routes", e);
-  }
+  });
+})().catch((err) => {
+  console.error("[Startup] Fatal:", err);
+  process.exit(1);
 });

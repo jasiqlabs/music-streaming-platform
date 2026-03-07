@@ -5,6 +5,12 @@ import { uploadLimiter } from "../common/security/rateLimit";
 import multer from "multer";
 import path from "path";
 import fs from "fs";
+import { getStorageService } from "../shared/storage/services/storage.service";
+import { getStorageConfig } from "../config/storage.config";
+import { getMediaConfig } from "../config/media.config";
+import { generateStorageKey } from "../shared/storage/utils/storage-key.util";
+import { validateFileForUpload } from "../shared/storage/utils/file-validation.util";
+import { getExtensionFromMime } from "../shared/storage/utils/file-metadata.util";
 
 const router = Router();
 
@@ -72,6 +78,20 @@ const ensureContentSchema = async () => {
   await pool.query(
     "ALTER TABLE content_items ADD COLUMN IF NOT EXISTS subscription_required BOOLEAN NOT NULL DEFAULT false"
   );
+  await pool.query(
+    "ALTER TABLE content_items ADD COLUMN IF NOT EXISTS storage_provider VARCHAR(20) DEFAULT 'local'"
+  );
+  await pool.query("ALTER TABLE content_items ADD COLUMN IF NOT EXISTS storage_key TEXT");
+  await pool.query("ALTER TABLE content_items ADD COLUMN IF NOT EXISTS thumbnail_storage_key TEXT");
+  await pool.query(
+    "ALTER TABLE content_items ADD COLUMN IF NOT EXISTS visibility VARCHAR(30) DEFAULT 'PROTECTED'"
+  );
+  await pool.query("ALTER TABLE content_items ADD COLUMN IF NOT EXISTS status VARCHAR(20)");
+  await pool.query("ALTER TABLE content_items ADD COLUMN IF NOT EXISTS mime_type VARCHAR(100)");
+  await pool.query("ALTER TABLE content_items ADD COLUMN IF NOT EXISTS file_size_bytes INT");
+  await pool.query("ALTER TABLE content_items ADD COLUMN IF NOT EXISTS original_file_name VARCHAR(255)");
+  await pool.query("ALTER TABLE content_items ADD COLUMN IF NOT EXISTS uploaded_at TIMESTAMPTZ");
+  await pool.query("ALTER TABLE content_items ADD COLUMN IF NOT EXISTS video_storage_key TEXT");
 };
 
 const ensurePlaysSchema = async () => {
@@ -106,25 +126,16 @@ const ensureUploadsDir = () => {
   return dir;
 };
 
-const storage = multer.diskStorage({
-  destination: (_req, _file, cb) => {
-    try {
-      cb(null, ensureUploadsDir());
-    } catch (e: any) {
-      cb(e, ensureUploadsDir());
-    }
-  },
-  filename: (_req, file, cb) => {
-    const ext = path.extname(file.originalname || "");
-    const base = `${Date.now()}-${Math.round(Math.random() * 1e9)}`;
-    cb(null, `${base}${ext}`);
-  }
-});
+const mediaConfig = () => getMediaConfig();
+const maxAudioBytes = () => mediaConfig().maxUploadAudioBytes;
+const maxVideoBytes = () => mediaConfig().maxUploadVideoBytes;
+const maxImageBytes = () => mediaConfig().maxUploadImageBytes;
 
+const memoryStorage = multer.memoryStorage();
 const upload = multer({
-  storage,
+  storage: memoryStorage,
   limits: {
-    fileSize: 1024 * 1024 * 250
+    fileSize: Math.max(maxAudioBytes(), maxVideoBytes(), maxImageBytes(), 1024 * 1024 * 250)
   }
 });
 
@@ -140,6 +151,10 @@ router.post(
   ]),
   async (req: any, res: any) => {
     const correlationId = req?.correlationId || "-";
+    const artistId = req.user?.id;
+    const storage = getStorageService();
+    const config = getStorageConfig();
+    const mediaCfg = getMediaConfig();
 
     try {
       await ensureContentSchema();
@@ -181,41 +196,123 @@ router.post(
         });
       }
 
-      const artistId = req.user?.id;
+      const thumbMime = thumb.mimetype || "application/octet-stream";
+      const audioMime = audio.mimetype || "application/octet-stream";
+      const videoMime = video.mimetype || "application/octet-stream";
 
-      const thumbnailUrl = `/uploads/${thumb.filename}`;
-      const audioUrl = `/uploads/${audio.filename}`;
-      const videoUrl = `/uploads/${video.filename}`;
-      const mediaUrl = audioUrl;
+      const vThumb = validateFileForUpload({
+        originalFilename: thumb.originalname || "thumb",
+        mimeType: thumbMime,
+        sizeBytes: thumb.size ?? 0,
+        claimedMediaType: "image",
+        maxSizeBytes: mediaCfg.maxUploadImageBytes
+      });
+      if (!vThumb.ok) {
+        return res.status(400).json({ success: false, message: vThumb.error || "Invalid thumbnail", correlationId });
+      }
+
+      const vAudio = validateFileForUpload({
+        originalFilename: audio.originalname || "audio",
+        mimeType: audioMime,
+        sizeBytes: audio.size ?? 0,
+        claimedMediaType: "audio",
+        maxSizeBytes: mediaCfg.maxUploadAudioBytes
+      });
+      if (!vAudio.ok) {
+        return res.status(400).json({ success: false, message: vAudio.error || "Invalid audio", correlationId });
+      }
+
+      const vVideo = validateFileForUpload({
+        originalFilename: video.originalname || "video",
+        mimeType: videoMime,
+        sizeBytes: video.size ?? 0,
+        claimedMediaType: "video",
+        maxSizeBytes: mediaCfg.maxUploadVideoBytes
+      });
+      if (!vVideo.ok) {
+        return res.status(400).json({ success: false, message: vVideo.error || "Invalid video", correlationId });
+      }
+
+      const extThumb = vThumb.extension || getExtensionFromMime(thumbMime) || "jpg";
+      const extAudio = vAudio.extension || getExtensionFromMime(audioMime) || "mp3";
+      const extVideo = vVideo.extension || getExtensionFromMime(videoMime) || "mp4";
+
+      const thumbnailKey = generateStorageKey(artistId, "thumbnails", extThumb);
+      const audioKey = generateStorageKey(artistId, "audio", extAudio);
+      const videoKey = generateStorageKey(artistId, "video", extVideo);
+
+      await storage.upload({
+        storageKey: thumbnailKey,
+        body: thumb.buffer,
+        contentType: thumbMime
+      });
+      await storage.upload({
+        storageKey: audioKey,
+        body: audio.buffer,
+        contentType: audioMime
+      });
+      await storage.upload({
+        storageKey: videoKey,
+        body: video.buffer,
+        contentType: videoMime
+      });
+
       const normalizedType = "AUDIO";
-
-      const insert = await pool.query(
-        `INSERT INTO content_items (title, type, artist_id, thumbnail_url, media_url, audio_url, video_url, genre, lifecycle_state, is_approved)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 'DRAFT', false)
-         RETURNING id, title, type, artist_id, thumbnail_url, media_url, audio_url, video_url, genre, lifecycle_state, is_approved, created_at`,
-        [trimmedTitle, normalizedType, artistId, thumbnailUrl, mediaUrl, audioUrl, videoUrl, trimmedGenre || null]
+      const now = new Date().toISOString();
+      let insert;
+      try {
+        insert = await pool.query(
+        `INSERT INTO content_items (
+          title, type, artist_id, genre, lifecycle_state, is_approved,
+          storage_provider, storage_key, thumbnail_storage_key, video_storage_key, visibility, status,
+          mime_type, file_size_bytes, original_file_name, uploaded_at
+        ) VALUES ($1, $2, $3, $4, 'DRAFT', false, $5, $6, $7, $8, 'PROTECTED', 'DRAFT', $9, $10, $11, $12)
+        RETURNING id, title, type, artist_id, storage_key, thumbnail_storage_key, storage_provider, visibility, status, created_at`,
+        [
+          trimmedTitle,
+          normalizedType,
+          artistId,
+          trimmedGenre || null,
+          config.provider,
+          audioKey,
+          thumbnailKey,
+          videoKey,
+          audioMime,
+          audio.size ?? null,
+          audio.originalname || null,
+          now
+        ]
       );
+      } catch (dbErr: any) {
+        try {
+          await storage.delete(thumbnailKey);
+          await storage.delete(audioKey);
+          await storage.delete(videoKey);
+        } catch (cleanupErr) {
+          console.error("[content/upload] cleanup after DB failure", correlationId, cleanupErr);
+        }
+        throw dbErr;
+      }
 
+      const row = insert.rows[0];
       return res.json({
         success: true,
         item: {
-          id: insert.rows[0].id,
-          title: insert.rows[0].title,
-          type: insert.rows[0].type,
-          artistId: insert.rows[0].artist_id,
-          thumbnailUrl: insert.rows[0].thumbnail_url,
-          mediaUrl: insert.rows[0].media_url,
-          audioUrl: insert.rows[0].audio_url,
-          videoUrl: insert.rows[0].video_url,
-          genre: insert.rows[0].genre,
-          lifecycleState: insert.rows[0].lifecycle_state,
-          isApproved: insert.rows[0].is_approved,
-          status: "PENDING",
-          createdAt: insert.rows[0].created_at
+          id: row.id,
+          title: row.title,
+          type: row.type,
+          artistId: row.artist_id,
+          storageProvider: row.storage_provider,
+          storageKey: row.storage_key,
+          thumbnailStorageKey: row.thumbnail_storage_key,
+          visibility: row.visibility,
+          status: row.status ?? "PENDING",
+          createdAt: row.created_at
         },
         correlationId
       });
-    } catch {
+    } catch (err: any) {
+      console.error("[content/upload] error", correlationId, err?.message);
       return res.status(500).json({
         success: false,
         message: "Failed to upload content",

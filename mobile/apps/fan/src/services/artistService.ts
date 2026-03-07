@@ -80,6 +80,7 @@ export type ApiArtistContentItem = {
   fileUrl?: string | null;
   locked?: boolean;
   isLocked?: boolean;
+  useStreamAccess?: boolean;
 };
 
 export type ArtistMediaItem = {
@@ -89,6 +90,7 @@ export type ArtistMediaItem = {
   artworkUrl: string;
   mediaUrl: string;
   locked: boolean;
+  useStreamAccess?: boolean;
 };
 
 function resolveMediaUrl(url: string) {
@@ -110,6 +112,7 @@ export async function fetchArtistMedia(artistId: string): Promise<ArtistMediaIte
         resolveMediaUrl((it.artwork || it.thumbnailUrl || '').toString()) ||
         'https://images.unsplash.com/photo-1464863979621-258859e62245?auto=format&fit=crop&w=1400&q=80';
       const mediaUrl = resolveMediaUrl((it.mediaUrl || it.fileUrl || '').toString()) || '';
+      const useStreamAccess = Boolean(it.useStreamAccess);
       const item: ArtistMediaItem = {
         id: String(it.id),
         title: (it.title ?? 'Untitled').toString(),
@@ -117,11 +120,12 @@ export async function fetchArtistMedia(artistId: string): Promise<ArtistMediaIte
         artworkUrl,
         mediaUrl,
         locked: Boolean(it.isLocked ?? it.locked ?? false),
+        useStreamAccess,
       };
 
       return item;
     })
-    .filter((it) => Boolean(it.mediaUrl));
+    .filter((it) => Boolean(it.mediaUrl) || it.useStreamAccess);
 }
 
 export async function fetchVerifiedArtists(): Promise<ArtistListItem[]> {
