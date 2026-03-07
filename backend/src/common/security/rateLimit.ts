@@ -56,6 +56,13 @@ export const globalLimiter = rateLimit({
   standardHeaders: true,
   legacyHeaders: false,
   keyGenerator: (req: any) => getClientIp(req),
+  // In local development, React (StrictMode), hot reload, and API-driven UIs can
+  // generate bursts of requests. Skip global limiting for local/private IPs to
+  // avoid noisy 429s during development.
+  skip: (req: any) => {
+    const ip = getClientIp(req);
+    return process.env.NODE_ENV !== "production" && isLocalOrPrivateIp(ip);
+  },
   handler: maroonRateLimitHandler
 });
 

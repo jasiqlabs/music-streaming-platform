@@ -13,6 +13,8 @@ const ensureContentSchema = async () => {
       artist_id INT NOT NULL,
       thumbnail_url TEXT,
       media_url TEXT,
+      audio_url TEXT,
+      video_url TEXT,
       genre VARCHAR(80),
       lifecycle_state VARCHAR(20) NOT NULL DEFAULT 'DRAFT',
       is_approved BOOLEAN NOT NULL DEFAULT false,
@@ -26,6 +28,8 @@ const ensureContentSchema = async () => {
   await pool.query("ALTER TABLE content_items ADD COLUMN IF NOT EXISTS artist_id INT");
   await pool.query("ALTER TABLE content_items ADD COLUMN IF NOT EXISTS thumbnail_url TEXT");
   await pool.query("ALTER TABLE content_items ADD COLUMN IF NOT EXISTS media_url TEXT");
+  await pool.query("ALTER TABLE content_items ADD COLUMN IF NOT EXISTS audio_url TEXT");
+  await pool.query("ALTER TABLE content_items ADD COLUMN IF NOT EXISTS video_url TEXT");
   await pool.query("ALTER TABLE content_items ADD COLUMN IF NOT EXISTS genre VARCHAR(80)");
   await pool.query(
     "ALTER TABLE content_items ADD COLUMN IF NOT EXISTS lifecycle_state VARCHAR(20) NOT NULL DEFAULT 'DRAFT'"

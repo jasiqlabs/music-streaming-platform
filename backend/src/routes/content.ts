@@ -39,6 +39,8 @@ const ensureContentSchema = async () => {
       artist_id INT NOT NULL,
       thumbnail_url TEXT,
       media_url TEXT,
+      audio_url TEXT,
+      video_url TEXT,
       genre VARCHAR(80),
       lifecycle_state VARCHAR(20) NOT NULL DEFAULT 'DRAFT',
       is_approved BOOLEAN NOT NULL DEFAULT false,
@@ -52,6 +54,8 @@ const ensureContentSchema = async () => {
   await pool.query("ALTER TABLE content_items ADD COLUMN IF NOT EXISTS artist_id INT");
   await pool.query("ALTER TABLE content_items ADD COLUMN IF NOT EXISTS thumbnail_url TEXT");
   await pool.query("ALTER TABLE content_items ADD COLUMN IF NOT EXISTS media_url TEXT");
+  await pool.query("ALTER TABLE content_items ADD COLUMN IF NOT EXISTS audio_url TEXT");
+  await pool.query("ALTER TABLE content_items ADD COLUMN IF NOT EXISTS video_url TEXT");
   await pool.query("ALTER TABLE content_items ADD COLUMN IF NOT EXISTS genre VARCHAR(80)");
   await pool.query(
     "ALTER TABLE content_items ADD COLUMN IF NOT EXISTS lifecycle_state VARCHAR(20) NOT NULL DEFAULT 'DRAFT'"
@@ -131,7 +135,8 @@ router.post(
   requireArtist,
   upload.fields([
     { name: "thumbnail", maxCount: 1 },
-    { name: "media", maxCount: 1 }
+    { name: "audio", maxCount: 1 },
+    { name: "video", maxCount: 1 }
   ]),
   async (req: any, res: any) => {
     const correlationId = req?.correlationId || "-";
@@ -139,32 +144,39 @@ router.post(
     try {
       await ensureContentSchema();
 
-      const { title, type, genre } = req.body as {
+      const { title, genre } = req.body as {
         title?: string;
-        type?: string;
         genre?: string;
       };
 
       const trimmedTitle = (title || "").trim();
-      const normalizedType = (type || "").trim().toUpperCase();
       const trimmedGenre = (genre || "").trim();
 
-      if (!trimmedTitle || (normalizedType !== "AUDIO" && normalizedType !== "VIDEO")) {
+      if (!trimmedTitle) {
         return res.status(400).json({
           success: false,
-          message: "title and type (Audio/Video) are required",
+          message: "title is required",
+          correlationId
+        });
+      }
+
+      if (!trimmedGenre) {
+        return res.status(400).json({
+          success: false,
+          message: "genre is required",
           correlationId
         });
       }
 
       const files = (req.files || {}) as Record<string, any[]>;
       const thumb = (files.thumbnail?.[0] as any) ?? null;
-      const media = (files.media?.[0] as any) ?? null;
+      const audio = (files.audio?.[0] as any) ?? null;
+      const video = (files.video?.[0] as any) ?? null;
 
-      if (!thumb || !media) {
+      if (!thumb || !audio || !video) {
         return res.status(400).json({
           success: false,
-          message: "thumbnail and media files are required",
+          message: "thumbnail, audio, and video files are required",
           correlationId
         });
       }
@@ -172,13 +184,16 @@ router.post(
       const artistId = req.user?.id;
 
       const thumbnailUrl = `/uploads/${thumb.filename}`;
-      const mediaUrl = `/uploads/${media.filename}`;
+      const audioUrl = `/uploads/${audio.filename}`;
+      const videoUrl = `/uploads/${video.filename}`;
+      const mediaUrl = audioUrl;
+      const normalizedType = "AUDIO";
 
       const insert = await pool.query(
-        `INSERT INTO content_items (title, type, artist_id, thumbnail_url, media_url, genre, lifecycle_state, is_approved)
-         VALUES ($1, $2, $3, $4, $5, $6, 'DRAFT', false)
-         RETURNING id, title, type, artist_id, thumbnail_url, media_url, genre, lifecycle_state, is_approved, created_at`,
-        [trimmedTitle, normalizedType, artistId, thumbnailUrl, mediaUrl, trimmedGenre || null]
+        `INSERT INTO content_items (title, type, artist_id, thumbnail_url, media_url, audio_url, video_url, genre, lifecycle_state, is_approved)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 'DRAFT', false)
+         RETURNING id, title, type, artist_id, thumbnail_url, media_url, audio_url, video_url, genre, lifecycle_state, is_approved, created_at`,
+        [trimmedTitle, normalizedType, artistId, thumbnailUrl, mediaUrl, audioUrl, videoUrl, trimmedGenre || null]
       );
 
       return res.json({
@@ -190,6 +205,8 @@ router.post(
           artistId: insert.rows[0].artist_id,
           thumbnailUrl: insert.rows[0].thumbnail_url,
           mediaUrl: insert.rows[0].media_url,
+          audioUrl: insert.rows[0].audio_url,
+          videoUrl: insert.rows[0].video_url,
           genre: insert.rows[0].genre,
           lifecycleState: insert.rows[0].lifecycle_state,
           isApproved: insert.rows[0].is_approved,
@@ -217,7 +234,7 @@ router.get("/mine", requireAuth, requireArtist, async (req: any, res: any) => {
     const artistId = req.user?.id;
 
     const rows = await pool.query(
-      `SELECT id, title, type, thumbnail_url, lifecycle_state, is_approved, created_at
+      `SELECT id, title, type, thumbnail_url, audio_url, video_url, media_url, lifecycle_state, is_approved, created_at
        FROM content_items
        WHERE artist_id = $1
        ORDER BY created_at DESC
@@ -230,6 +247,9 @@ router.get("/mine", requireAuth, requireArtist, async (req: any, res: any) => {
       title: r.title,
       type: r.type,
       thumbnailUrl: r.thumbnail_url ?? null,
+      audioUrl: r.audio_url ?? null,
+      videoUrl: r.video_url ?? null,
+      mediaUrl: r.media_url ?? null,
       lifecycleState: r.lifecycle_state,
       isApproved: r.is_approved,
       createdAt: r.created_at
@@ -327,6 +347,8 @@ router.get("/history", requireAuth, requireArtistOrAdmin, async (req: any, res: 
           c.type,
           c.thumbnail_url,
           c.media_url,
+          c.audio_url,
+          c.video_url,
           c.lifecycle_state,
           c.is_approved,
           c.rejection_reason,
@@ -349,6 +371,8 @@ router.get("/history", requireAuth, requireArtistOrAdmin, async (req: any, res: 
           type: (r.type ?? "").toString().toLowerCase(),
           thumbnailUrl: r.thumbnail_url ?? null,
           mediaUrl: r.media_url ?? null,
+          audioUrl: r.audio_url ?? null,
+          videoUrl: r.video_url ?? null,
           lifecycleState: lifecycle,
           isApproved: r.is_approved,
           status,
@@ -369,6 +393,8 @@ router.get("/history", requireAuth, requireArtistOrAdmin, async (req: any, res: 
         c.type,
         c.thumbnail_url,
         c.media_url,
+        c.audio_url,
+        c.video_url,
         c.lifecycle_state,
         c.is_approved,
         c.rejection_reason,
@@ -391,6 +417,8 @@ router.get("/history", requireAuth, requireArtistOrAdmin, async (req: any, res: 
         type: (r.type ?? "").toString().toLowerCase(),
         thumbnailUrl: r.thumbnail_url ?? null,
         mediaUrl: r.media_url ?? null,
+        audioUrl: r.audio_url ?? null,
+        videoUrl: r.video_url ?? null,
         lifecycleState: lifecycle,
         isApproved: r.is_approved,
         status,

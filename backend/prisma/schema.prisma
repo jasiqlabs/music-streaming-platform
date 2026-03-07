@@ -93,6 +93,8 @@ model content_items {
   artist_id             Int
   thumbnail_url         String?
   media_url             String?
+  audio_url             String?
+  video_url             String?
   genre                 String?   @db.VarChar(80)
   lifecycle_state       String    @default("DRAFT") @db.VarChar(20)
   is_approved           Boolean   @default(false)

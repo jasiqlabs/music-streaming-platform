@@ -11,6 +11,8 @@ type PendingItem = {
   thumbnailUrl: string | null;
   mediaUrl?: string | null;
   fileUrl?: string | null;
+  audioUrl?: string | null;
+  videoUrl?: string | null;
   status: "PENDING";
   artist?: {
     id: number;
@@ -65,9 +67,12 @@ function PreviewModal({
   const [mediaReady, setMediaReady] = useState(false);
   const [mediaError, setMediaError] = useState<string | null>(null);
 
-  const resolvedFileUrl = item?.fileUrl ?? item?.mediaUrl ?? null;
-  const mediaUrl = toAbsoluteUrl(resolvedFileUrl, baseUrl);
-  const type = (item?.type ?? "").toString().toUpperCase();
+  const audioUrl = toAbsoluteUrl(item?.audioUrl ?? item?.mediaUrl ?? item?.fileUrl ?? null, baseUrl);
+  const videoUrl = toAbsoluteUrl(item?.videoUrl ?? null, baseUrl);
+
+  const hasAudio = Boolean(audioUrl);
+  const hasVideo = Boolean(videoUrl);
+  const derivedType = hasAudio && hasVideo ? "COMBINED" : hasVideo ? "VIDEO" : "AUDIO";
 
   useEffect(() => {
     if (!open) return;
@@ -90,7 +95,7 @@ function PreviewModal({
         <div className="flex items-center justify-between px-5 py-4 border-b border-white/10">
           <div className="min-w-0">
             <div className="text-[14px] text-[#e6d6d2] truncate">{item.title}</div>
-            <div className="text-[12px] text-[#a99792]">{type}</div>
+            <div className="text-[12px] text-[#a99792]">{derivedType}</div>
           </div>
           <button
             type="button"
@@ -102,45 +107,67 @@ function PreviewModal({
         </div>
 
         <div className="p-5">
-          {!mediaUrl ? (
-            <div className="text-[13px] text-[#b8a6a1]">Media file missing for this item.</div>
-          ) : (
-            <div className="relative">
-              {!mediaReady ? (
-                <div className="mb-4">
-                  <Skeleton className="h-[220px] w-full rounded-[10px]" />
-                </div>
-              ) : null}
-
-              {mediaError ? (
-                <div className="mb-4 rounded-[10px] border border-white/10 bg-white/5 px-4 py-3 text-[13px] text-[#e6b0b0]">
-                  Failed to load media. Please verify the backend is running and the file URL is reachable.
-                </div>
-              ) : null}
-
-              {type === "VIDEO" ? (
-                <video
-                  src={mediaUrl}
-                  controls
-                  preload="metadata"
-                  onCanPlay={() => setMediaReady(true)}
-                  onError={() => setMediaError("FAILED")}
-                  className={`w-full rounded-[10px] border border-white/10 bg-black ${
-                    mediaReady ? "" : "opacity-0 h-0"
-                  }`}
-                />
-              ) : (
-                <audio
-                  src={mediaUrl}
-                  controls
-                  preload="metadata"
-                  onCanPlay={() => setMediaReady(true)}
-                  onError={() => setMediaError("FAILED")}
-                  className={`w-full ${mediaReady ? "" : "opacity-0 h-0"}`}
-                />
-              )}
+          {!hasAudio || !hasVideo ? (
+            <div className="mb-4 rounded-[10px] border border-rose-500/20 bg-rose-500/10 px-4 py-3 text-[13px] text-rose-200">
+              Missing required media:
+              <div className="mt-2 text-[12px] text-rose-100">
+                {!hasAudio ? "- Audio file missing" : null}
+                {!hasVideo ? <div>- Video file missing</div> : null}
+              </div>
             </div>
-          )}
+          ) : null}
+
+          <div className="relative space-y-4">
+            {!mediaReady ? (
+              <div>
+                <Skeleton className="h-[220px] w-full rounded-[10px]" />
+              </div>
+            ) : null}
+
+            {mediaError ? (
+              <div className="rounded-[10px] border border-white/10 bg-white/5 px-4 py-3 text-[13px] text-[#e6b0b0]">
+                Failed to load media. Please verify the backend is running and the file URL is reachable.
+              </div>
+            ) : null}
+
+            <div className="rounded-[10px] border border-white/10 bg-black/30 overflow-hidden">
+              <div className="px-4 py-2 border-b border-white/10 text-[12px] text-[#cdbdb8]">Audio</div>
+              <div className="p-3">
+                {audioUrl ? (
+                  <audio
+                    src={audioUrl}
+                    controls
+                    preload="metadata"
+                    onCanPlay={() => setMediaReady(true)}
+                    onError={() => setMediaError("FAILED")}
+                    className={`w-full ${mediaReady ? "" : "opacity-0 h-0"}`}
+                  />
+                ) : (
+                  <div className="text-[13px] text-[#b8a6a1]">Audio missing</div>
+                )}
+              </div>
+            </div>
+
+            <div className="rounded-[10px] border border-white/10 bg-black/30 overflow-hidden">
+              <div className="px-4 py-2 border-b border-white/10 text-[12px] text-[#cdbdb8]">Video</div>
+              <div className="p-3">
+                {videoUrl ? (
+                  <video
+                    src={videoUrl}
+                    controls
+                    preload="metadata"
+                    onCanPlay={() => setMediaReady(true)}
+                    onError={() => setMediaError("FAILED")}
+                    className={`w-full rounded-[10px] border border-white/10 bg-black ${
+                      mediaReady ? "" : "opacity-0 h-0"
+                    }`}
+                  />
+                ) : (
+                  <div className="text-[13px] text-[#b8a6a1]">Video missing</div>
+                )}
+              </div>
+            </div>
+          </div>
         </div>
       </div>
     </div>
@@ -198,7 +225,9 @@ export default function AdminContentApprovalQueuePage() {
     ...x,
     thumbnailUrl: toAbsoluteUrl(x.thumbnailUrl, baseUrl),
     mediaUrl: toAbsoluteUrl(x.mediaUrl ?? null, baseUrl),
-    fileUrl: toAbsoluteUrl(x.fileUrl ?? null, baseUrl)
+    fileUrl: toAbsoluteUrl(x.fileUrl ?? null, baseUrl),
+    audioUrl: toAbsoluteUrl(x.audioUrl ?? null, baseUrl),
+    videoUrl: toAbsoluteUrl(x.videoUrl ?? null, baseUrl)
   }));
 
   const approveMutation = useMutation({
@@ -373,7 +402,9 @@ export default function AdminContentApprovalQueuePage() {
             ) : (
               items.map((item: PendingItem) => {
                 const artistName = item.artist?.name || "Unknown artist";
-                const typeLabel = (item.type || "").toString();
+                const hasAudio = Boolean(item.audioUrl || item.mediaUrl || item.fileUrl);
+                const hasVideo = Boolean(item.videoUrl);
+                const typeLabel = hasAudio && hasVideo ? "COMBINED" : hasVideo ? "VIDEO" : "AUDIO";
                 return (
                   <div key={item.id} className="px-6 py-4">
                     <div className="grid grid-cols-[1fr_140px_120px_260px] gap-4 items-center">

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { http } from "../services/http";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
@@ -34,7 +34,10 @@ type ContentHistoryItem = {
   id: number;
   title: string;
   type: string;
-  thumbnailUrl: string | null;
+  thumbnailUrl?: string | null;
+  mediaUrl?: string | null;
+  audioUrl?: string | null;
+  videoUrl?: string | null;
   isApproved: boolean;
   createdAt: string;
 };
@@ -123,6 +126,10 @@ export default function AdminArtistDetailPage() {
   const artistId = params.id;
   const queryClient = useQueryClient();
 
+  const lastLoadedArtistIdRef = useRef<string | null>(null);
+  const artistFetchInFlightRef = useRef(false);
+  const historyFetchInFlightRef = useRef(false);
+
   const [menuOpen, setMenuOpen] = useState(false);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
@@ -143,7 +150,9 @@ export default function AdminArtistDetailPage() {
   const [historyBusyId, setHistoryBusyId] = useState<number | null>(null);
   const [confirmDelete, setConfirmDelete] = useState<ContentHistoryItem | null>(null);
 
-  const [previewId, setPreviewId] = useState<number | null>(null);
+  const [historyTab, setHistoryTab] = useState<"AUDIO" | "VIDEO">("AUDIO");
+  const [historyFilter, setHistoryFilter] = useState<"ALL" | "AUDIO_ONLY" | "VIDEO_ONLY">("ALL");
+  const [previewItem, setPreviewItem] = useState<ContentHistoryItem | null>(null);
 
   const backgroundStyle = useMemo(() => {
     return {
@@ -170,8 +179,14 @@ export default function AdminArtistDetailPage() {
     } as const;
   }, [artist?.bannerImage]);
 
-  const fetchArtist = async () => {
+  const fetchArtist = async (force = false) => {
     if (!artistId) return;
+    if (!force) {
+      if (artistFetchInFlightRef.current) return;
+      if (lastLoadedArtistIdRef.current === artistId) return;
+    }
+
+    artistFetchInFlightRef.current = true;
     setLoading(true);
     try {
       const res = await http.get<ArtistDetailResponse>(`/api/v1/admin/artists/${artistId}`);
@@ -198,11 +213,16 @@ export default function AdminArtistDetailPage() {
       }
     } finally {
       setLoading(false);
+      artistFetchInFlightRef.current = false;
+      lastLoadedArtistIdRef.current = artistId;
     }
   };
 
-  const fetchContentHistory = async () => {
+  const fetchContentHistory = async (force = false) => {
     if (!artistId) return;
+    if (!force && historyFetchInFlightRef.current) return;
+
+    historyFetchInFlightRef.current = true;
     setHistoryLoading(true);
     setHistoryError(null);
     try {
@@ -216,43 +236,104 @@ export default function AdminArtistDetailPage() {
         throw new Error(res.data?.message || "Failed to fetch content history");
       }
 
-      const next = Array.isArray(res.data?.items) ? (res.data.items as ContentHistoryItem[]) : [];
-      setHistoryItems(next);
+      const raw = Array.isArray(res.data?.items) ? (res.data.items as any[]) : [];
+      const next: ContentHistoryItem[] = raw.map((it: any) => {
+        const thumbnailUrl = it?.thumbnailUrl ?? it?.thumbnail_url ?? null;
+        const mediaUrl = it?.mediaUrl ?? it?.media_url ?? null;
+        const audioUrl = it?.audioUrl ?? it?.audio_url ?? null;
+        const videoUrl = it?.videoUrl ?? it?.video_url ?? null;
+
+        return {
+          id: Number(it?.id),
+          title: (it?.title ?? "").toString(),
+          type: (it?.type ?? "").toString(),
+          thumbnailUrl,
+          mediaUrl,
+          audioUrl,
+          videoUrl,
+          isApproved: Boolean(it?.isApproved ?? it?.is_approved),
+          createdAt: (it?.createdAt ?? it?.created_at ?? "").toString()
+        };
+      });
+
+      setHistoryItems(next.filter((x) => Number.isFinite(x.id) && x.id > 0));
     } catch (e: any) {
       setHistoryError(e?.response?.data?.message || e?.message || "Failed to fetch content history");
       setHistoryItems([]);
     } finally {
       setHistoryLoading(false);
+      historyFetchInFlightRef.current = false;
     }
   };
 
   useEffect(() => {
+    lastLoadedArtistIdRef.current = null;
     fetchArtist();
     fetchContentHistory();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [artistId]);
 
   useEffect(() => {
-    if (!previewId) return;
-    const exists = historyItems.some((x) => x.id === previewId);
-    if (!exists) setPreviewId(null);
-  }, [historyItems, previewId]);
+    if (!previewItem) return;
+    const exists = historyItems.some((x) => x.id === previewItem.id);
+    if (!exists) setPreviewItem(null);
+  }, [historyItems, previewItem]);
 
-  const isPlayableMediaUrl = (url: string | null) => {
-    if (!url) return false;
-    const u = url.toLowerCase();
-    return (
-      u.endsWith(".mp3") ||
-      u.endsWith(".wav") ||
-      u.endsWith(".m4a") ||
-      u.endsWith(".aac") ||
-      u.endsWith(".ogg") ||
-      u.endsWith(".mp4") ||
-      u.endsWith(".webm") ||
-      u.endsWith(".mov") ||
-      u.endsWith(".mkv")
-    );
+  const baseUrl = useMemo(() => {
+    return (import.meta as any).env?.VITE_API_BASE_URL || "http://localhost:8000";
+  }, []);
+
+  const toAbsoluteUrl = (url: string | null | undefined) => {
+    if (!url) return null;
+    if (typeof url !== "string") return null;
+    if (url.startsWith("http://") || url.startsWith("https://")) return url;
+    return `${baseUrl}${url.startsWith("/") ? "" : "/"}${url}`;
   };
+
+  const isAudioUrl = (url: string | null | undefined) => {
+    if (!url) return false;
+    if (typeof url !== "string") return false;
+    const u = url.toLowerCase();
+    return u.endsWith(".mp3") || u.endsWith(".wav") || u.endsWith(".m4a") || u.endsWith(".aac") || u.endsWith(".ogg");
+  };
+
+  const isVideoUrl = (url: string | null | undefined) => {
+    if (!url) return false;
+    if (typeof url !== "string") return false;
+    const u = url.toLowerCase();
+    return u.endsWith(".mp4") || u.endsWith(".webm") || u.endsWith(".mov") || u.endsWith(".mkv");
+  };
+
+  const hasAudioForItem = (item: ContentHistoryItem) => {
+    return Boolean(item.audioUrl) || isAudioUrl(item.mediaUrl);
+  };
+
+  const hasVideoForItem = (item: ContentHistoryItem) => {
+    return Boolean(item.videoUrl) || isVideoUrl(item.mediaUrl);
+  };
+
+  const getDisplayType = (item: ContentHistoryItem) => {
+    const hasAudio = hasAudioForItem(item);
+    const hasVideo = hasVideoForItem(item);
+    if (hasAudio && hasVideo) return "DUAL";
+    if (hasVideo) return "VIDEO";
+    return "AUDIO";
+  };
+
+  const filteredHistoryItems = useMemo(() => {
+    const tabKind = historyTab;
+    return historyItems.filter((it) => {
+      const hasAudio = hasAudioForItem(it);
+      const hasVideo = hasVideoForItem(it);
+
+      if (tabKind === "AUDIO" && !hasAudio) return false;
+      if (tabKind === "VIDEO" && !hasVideo) return false;
+
+      if (historyFilter === "AUDIO_ONLY") return hasAudio && !hasVideo;
+      if (historyFilter === "VIDEO_ONLY") return hasVideo && !hasAudio;
+      return true;
+    });
+  }, [historyFilter, historyItems, historyTab]);
 
   const deleteContent = async (item: ContentHistoryItem) => {
     setHistoryBusyId(item.id);
@@ -627,7 +708,7 @@ export default function AdminArtistDetailPage() {
                     <button
                       type="button"
                       disabled={historyLoading || loading}
-                      onClick={fetchContentHistory}
+                      onClick={() => fetchContentHistory(true)}
                       className="text-[12px] text-[#a99792] hover:text-[#e6d6d2] disabled:opacity-60"
                     >
                       Refresh
@@ -635,6 +716,46 @@ export default function AdminArtistDetailPage() {
                   </div>
 
                   {historyError ? <div className="mt-3 text-[12px] text-[#e3a1a1]">{historyError}</div> : null}
+
+                  <div className="mt-4 flex items-center justify-between gap-3">
+                    <div className="flex items-center gap-2">
+                      <button
+                        type="button"
+                        onClick={() => setHistoryTab("AUDIO")}
+                        className={`h-[30px] px-3 rounded-[6px] border text-[12px] tracking-wide transition-colors ${
+                          historyTab === "AUDIO"
+                            ? "border-white/15 bg-white/10 text-[#e6d6d2]"
+                            : "border-white/10 bg-[#0e0a0a]/25 text-[#b8a6a1] hover:text-[#e6d6d2]"
+                        }`}
+                      >
+                        Audio Content
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setHistoryTab("VIDEO")}
+                        className={`h-[30px] px-3 rounded-[6px] border text-[12px] tracking-wide transition-colors ${
+                          historyTab === "VIDEO"
+                            ? "border-white/15 bg-white/10 text-[#e6d6d2]"
+                            : "border-white/10 bg-[#0e0a0a]/25 text-[#b8a6a1] hover:text-[#e6d6d2]"
+                        }`}
+                      >
+                        Video Content
+                      </button>
+                    </div>
+
+                    <div className="flex items-center gap-2">
+                      <div className="text-[12px] text-[#a99792]">Filter</div>
+                      <select
+                        value={historyFilter}
+                        onChange={(e) => setHistoryFilter(e.target.value as any)}
+                        className="h-[30px] rounded-[6px] bg-[#0e0a0a]/35 border border-white/10 px-3 text-[12px] text-[#e6d6d2] outline-none focus:border-white/20"
+                      >
+                        <option value="ALL">All</option>
+                        <option value="AUDIO_ONLY">Audio Only</option>
+                        <option value="VIDEO_ONLY">Video Only</option>
+                      </select>
+                    </div>
+                  </div>
 
                   <div className="mt-4 divide-y divide-white/10 rounded-[6px] border border-white/10 overflow-hidden">
                     {historyLoading ? (
@@ -660,37 +781,24 @@ export default function AdminArtistDetailPage() {
                           <Skeleton className="h-[28px] w-[120px]" />
                         </div>
                       </div>
-                    ) : historyItems.length === 0 ? (
+                    ) : filteredHistoryItems.length === 0 ? (
                       <div className="px-5 py-4 text-[13px] text-[#b8a6a1]">No content items.</div>
                     ) : (
-                      historyItems.map((item) => {
-                        const typeLabel = (item.type || "").toString().toUpperCase();
+                      filteredHistoryItems.map((item) => {
+                        const typeLabel = getDisplayType(item);
                         const approved = Boolean(item.isApproved);
-                        const selected = previewId === item.id;
-                        const playable = isPlayableMediaUrl(item.thumbnailUrl);
+                        const thumbSrc = toAbsoluteUrl(item.thumbnailUrl);
                         return (
                           <div key={item.id} className="bg-[#141010]/25 px-5 py-4">
                             <div className="flex items-center justify-between gap-4">
                               <div className="flex items-center gap-4 min-w-0">
-                                <button
-                                  type="button"
-                                  onClick={() => setPreviewId((v) => (v === item.id ? null : item.id))}
-                                  className="h-[46px] w-[46px] rounded-[8px] bg-[#0e0a0a]/50 border border-white/10 overflow-hidden flex items-center justify-center shrink-0"
-                                >
-                                  {item.thumbnailUrl ? (
-                                    playable ? (
-                                      <div className="h-full w-full flex items-center justify-center">
-                                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-                                          <path d="M9 7.5V16.5L17 12L9 7.5Z" fill="#b16e5b" />
-                                        </svg>
-                                      </div>
-                                    ) : (
-                                      <img src={item.thumbnailUrl} alt="" className="h-full w-full object-cover" />
-                                    )
+                                <div className="h-[46px] w-[46px] rounded-[8px] bg-[#0e0a0a]/50 border border-white/10 overflow-hidden flex items-center justify-center shrink-0">
+                                  {thumbSrc ? (
+                                    <img src={thumbSrc} alt="" className="h-full w-full object-cover" />
                                   ) : (
                                     <div className="h-full w-full bg-gradient-to-b from-[#2a1a17] to-[#0e0a0a]" />
                                   )}
-                                </button>
+                                </div>
 
                                 <div className="min-w-0">
                                   <div className="text-[13px] text-[#e6d6d2] truncate">{item.title}</div>
@@ -715,6 +823,14 @@ export default function AdminArtistDetailPage() {
 
                                 <button
                                   type="button"
+                                  onClick={() => setPreviewItem(item)}
+                                  className="h-[32px] px-3 rounded-[6px] border border-white/10 bg-[#0e0a0a]/35 text-[12px] font-light text-[#d8c7c3] hover:text-white shadow-[0_10px_25px_rgba(0,0,0,0.35)]"
+                                >
+                                  Preview
+                                </button>
+
+                                <button
+                                  type="button"
                                   disabled={historyBusyId === item.id}
                                   onClick={() => setConfirmDelete(item)}
                                   className="h-[32px] px-3 rounded-[6px] border border-[#6e2c2c]/40 bg-gradient-to-b from-[#5d1f1f] to-[#2f1212] text-[12px] font-light text-[#f0d2d2] shadow-[0_10px_25px_rgba(0,0,0,0.35)] disabled:opacity-60"
@@ -723,26 +839,6 @@ export default function AdminArtistDetailPage() {
                                 </button>
                               </div>
                             </div>
-
-                            {selected ? (
-                              <div className="mt-4 rounded-[6px] border border-white/10 bg-[#0e0a0a]/35 px-4 py-3">
-                                {isPlayableMediaUrl(item.thumbnailUrl) ? (
-                                  (item.type || "").toString().toUpperCase() === "VIDEO" ? (
-                                    <video
-                                      src={item.thumbnailUrl ?? undefined}
-                                      controls
-                                      className="w-full max-h-[240px] rounded-[6px]"
-                                    />
-                                  ) : (
-                                    <audio src={item.thumbnailUrl ?? undefined} controls className="w-full" />
-                                  )
-                                ) : (
-                                  <div className="text-[12px] text-[#b8a6a1]">
-                                    No playable preview source available for this item.
-                                  </div>
-                                )}
-                              </div>
-                            ) : null}
                           </div>
                         );
                       })
@@ -946,6 +1042,75 @@ export default function AdminArtistDetailPage() {
               >
                 {historyBusyId === confirmDelete.id ? "Deleting..." : "Delete"}
               </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
+
+      {previewItem ? (
+        <div className="fixed inset-0 z-50 flex items-center justify-center px-6">
+          <div className="absolute inset-0 bg-black/65" onClick={() => setPreviewItem(null)} />
+          <div className="relative w-full max-w-[820px] rounded-[10px] border border-white/10 bg-[#141010]/95 backdrop-blur shadow-[0_30px_90px_rgba(0,0,0,0.75)]">
+            <div className="px-6 py-5 border-b border-white/10 flex items-start justify-between gap-4">
+              <div className="min-w-0">
+                <div className="text-[15px] text-[#e6d6d2] tracking-wide truncate">Preview Content</div>
+                <div className="mt-2 text-[13px] text-[#d8c7c3] truncate">{previewItem.title}</div>
+                <div className="mt-2 text-[12px] text-[#a99792]">
+                  Type: <span className="text-[#e6d6d2]">{getDisplayType(previewItem)}</span>
+                </div>
+              </div>
+
+              <button
+                type="button"
+                onClick={() => setPreviewItem(null)}
+                className="h-[34px] px-3 rounded-[6px] border border-white/10 bg-[#0e0a0a]/35 text-[12px] text-[#d8c7c3] hover:text-white"
+              >
+                Close
+              </button>
+            </div>
+
+            <div className="px-6 py-5">
+              {(() => {
+                const hasAudio = hasAudioForItem(previewItem);
+                const hasVideo = hasVideoForItem(previewItem);
+                const audioSrc = toAbsoluteUrl(previewItem.audioUrl ?? previewItem.mediaUrl);
+                const videoSrc = toAbsoluteUrl(previewItem.videoUrl ?? previewItem.mediaUrl);
+
+                return (
+                  <>
+                    {!hasAudio || !hasVideo ? (
+                      <div className="mb-4 rounded-[8px] border border-[#c9853b]/25 bg-[#7a4b28]/25 px-4 py-3 text-[12px] text-[#f2d6b6]">
+                        {!hasAudio ? <div>Audio file missing for this post.</div> : null}
+                        {!hasVideo ? <div>Video file missing for this post.</div> : null}
+                      </div>
+                    ) : null}
+
+                    <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+                      <div className="rounded-[8px] border border-white/10 bg-[#0e0a0a]/35 p-4">
+                        <div className="text-[13px] text-[#e6d6d2] tracking-wide">Audio Preview</div>
+                        <div className="mt-3">
+                          {hasAudio && audioSrc ? (
+                            <audio src={audioSrc ?? undefined} controls className="w-full" />
+                          ) : (
+                            <div className="text-[12px] text-[#b8a6a1]">No audio available.</div>
+                          )}
+                        </div>
+                      </div>
+
+                      <div className="rounded-[8px] border border-white/10 bg-[#0e0a0a]/35 p-4">
+                        <div className="text-[13px] text-[#e6d6d2] tracking-wide">Video Preview</div>
+                        <div className="mt-3">
+                          {hasVideo && videoSrc ? (
+                            <video src={videoSrc ?? undefined} controls className="w-full max-h-[320px] rounded-[8px]" />
+                          ) : (
+                            <div className="text-[12px] text-[#b8a6a1]">No video available.</div>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  </>
+                );
+              })()}
             </div>
           </div>
         </div>

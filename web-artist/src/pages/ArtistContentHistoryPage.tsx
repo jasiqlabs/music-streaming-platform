@@ -9,6 +9,8 @@ type HistoryItem = {
   type: string;
   thumbnailUrl?: string | null;
   mediaUrl?: string | null;
+  audioUrl?: string | null;
+  videoUrl?: string | null;
   createdAt: string;
   isApproved: boolean;
   lifecycleState?: string;
@@ -45,6 +47,7 @@ export default function ArtistContentHistoryPage() {
   const [query, setQuery] = useState("");
   const [tab, setTab] = useState<"ALL" | "AUDIO" | "VIDEO">("ALL");
   const [preview, setPreview] = useState<HistoryItem | null>(null);
+  const [previewKind, setPreviewKind] = useState<"AUDIO" | "VIDEO">("AUDIO");
   const queryClient = useQueryClient();
 
   const backgroundStyle = useMemo(() => {
@@ -87,12 +90,27 @@ export default function ArtistContentHistoryPage() {
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
     return items.filter((it) => {
-      const t = (it.type || "").toString().toUpperCase();
-      if (tab !== "ALL" && t !== tab) return false;
+      const hasAudio = Boolean(it.audioUrl || (it.mediaUrl || "").toString().toLowerCase().endsWith(".mp3"));
+      const hasVideo = Boolean(it.videoUrl || (it.mediaUrl || "").toString().toLowerCase().endsWith(".mp4"));
+      if (tab === "AUDIO" && !hasAudio) return false;
+      if (tab === "VIDEO" && !hasVideo) return false;
       if (!q) return true;
       return (it.title || "").toLowerCase().includes(q);
     });
   }, [items, query, tab]);
+
+  const getDisplayType = (it: HistoryItem) => {
+    const hasAudio = Boolean(it.audioUrl || it.mediaUrl);
+    const hasVideo = Boolean(it.videoUrl);
+    if (hasAudio && hasVideo) return "COMBINED";
+    if (hasVideo) return "VIDEO";
+    return "AUDIO";
+  };
+
+  const getPreviewUrl = (it: HistoryItem, kind: "AUDIO" | "VIDEO") => {
+    if (kind === "VIDEO") return toAbsoluteUrl(it.videoUrl ?? it.mediaUrl) ?? null;
+    return toAbsoluteUrl(it.audioUrl ?? it.mediaUrl) ?? null;
+  };
 
   const getStatus = (it: HistoryItem) => {
     const lifecycle = (it.lifecycleState || "").toString().toUpperCase();
@@ -262,11 +280,13 @@ export default function ArtistContentHistoryPage() {
                       ? "border-rose-500/25 bg-rose-500/10 text-rose-200"
                       : "border-amber-500/25 bg-amber-500/10 text-amber-200";
 
-                  const canPreview = Boolean(it.mediaUrl);
+                  const canPreviewAudio = Boolean(it.audioUrl || it.mediaUrl);
+                  const canPreviewVideo = Boolean(it.videoUrl);
+                  const typeLabel = getDisplayType(it);
                   return (
                     <tr key={`${id ?? idx}`} className="border-t border-white/10">
                       <td className="py-4 pr-4 text-[13px] text-[#f0e5e2]">{it.title}</td>
-                      <td className="py-4 pr-4 text-[12px] text-[#d8c7c3]">{(it.type || "").toUpperCase()}</td>
+                      <td className="py-4 pr-4 text-[12px] text-[#d8c7c3]">{typeLabel}</td>
                       <td className="py-4 pr-4 text-[12px] text-[#d8c7c3]">{formatDateTime(it.createdAt)}</td>
                       <td className="py-4 pr-4 text-[12px] text-[#d8c7c3]">{Number(it.totalPlays ?? 0).toLocaleString()}</td>
                       <td className="py-4 pr-4 text-[12px]">
@@ -285,11 +305,26 @@ export default function ArtistContentHistoryPage() {
                         <div className="flex items-center justify-end gap-2">
                           <button
                             type="button"
-                            disabled={!canPreview}
-                            onClick={() => setPreview(it)}
+                            disabled={!canPreviewAudio}
+                            onClick={() => {
+                              setPreviewKind("AUDIO");
+                              setPreview(it);
+                            }}
                             className="h-[32px] rounded-[6px] border border-white/10 bg-[#141010]/60 px-3 text-[12px] font-light tracking-wide text-[#e6d6d2] hover:bg-white/5 disabled:opacity-40"
                           >
-                            Preview
+                            Preview Audio
+                          </button>
+
+                          <button
+                            type="button"
+                            disabled={!canPreviewVideo}
+                            onClick={() => {
+                              setPreviewKind("VIDEO");
+                              setPreview(it);
+                            }}
+                            className="h-[32px] rounded-[6px] border border-white/10 bg-[#141010]/60 px-3 text-[12px] font-light tracking-wide text-[#e6d6d2] hover:bg-white/5 disabled:opacity-40"
+                          >
+                            Preview Video
                           </button>
 
                           <button
@@ -317,7 +352,7 @@ export default function ArtistContentHistoryPage() {
         </div>
       </div>
 
-      {preview && (preview.type || "").toString().toUpperCase() === "VIDEO" ? (
+      {preview && previewKind === "VIDEO" ? (
         <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/70 px-6" onClick={() => setPreview(null)}>
           <div
             className="w-full max-w-[980px] overflow-hidden rounded-[12px] border border-white/10 bg-[#0e0a0a] shadow-[0_30px_80px_rgba(0,0,0,0.65)]"
@@ -343,14 +378,14 @@ export default function ArtistContentHistoryPage() {
                 autoPlay
                 playsInline
                 className="w-full rounded-[10px] bg-black"
-                src={toAbsoluteUrl(preview.mediaUrl) ?? undefined}
+                src={getPreviewUrl(preview, "VIDEO") ?? undefined}
               />
             </div>
           </div>
         </div>
       ) : null}
 
-      {preview && (preview.type || "").toString().toUpperCase() === "AUDIO" ? (
+      {preview && previewKind === "AUDIO" ? (
         <div className="fixed inset-x-0 bottom-0 z-[60] px-6 pb-6">
           <div className="mx-auto w-full max-w-[1100px] rounded-[12px] border border-white/10 bg-[#141010]/90 backdrop-blur shadow-[0_24px_70px_rgba(0,0,0,0.6)]">
             <div className="flex items-center justify-between gap-4 px-5 py-4 border-b border-white/10">
@@ -367,7 +402,7 @@ export default function ArtistContentHistoryPage() {
               </button>
             </div>
             <div className="px-5 py-4">
-              <audio key={preview.id} controls autoPlay className="w-full" src={toAbsoluteUrl(preview.mediaUrl) ?? undefined} />
+              <audio key={preview.id} controls autoPlay className="w-full" src={getPreviewUrl(preview, "AUDIO") ?? undefined} />
             </div>
           </div>
         </div>

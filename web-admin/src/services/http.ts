@@ -15,3 +15,31 @@ http.interceptors.request.use((config) => {
   }
   return config;
 });
+
+let lastRateLimitAlertAt = 0;
+
+http.interceptors.response.use(
+  (res) => res,
+  (error) => {
+    const status = error?.response?.status;
+
+    if (status === 401 || status === 403) {
+      localStorage.removeItem("adminToken");
+      if (typeof window !== "undefined") {
+        window.location.href = "/admin/login";
+      }
+    }
+
+    if (status === 429) {
+      const now = Date.now();
+      if (now - lastRateLimitAlertAt > 10_000) {
+        lastRateLimitAlertAt = now;
+        if (typeof window !== "undefined") {
+          window.alert("Too many requests. Please wait a few seconds and try again.");
+        }
+      }
+    }
+
+    return Promise.reject(error);
+  }
+);
